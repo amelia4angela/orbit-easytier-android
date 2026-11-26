@@ -889,7 +889,7 @@ private fun MoreTab(
                             color = if (isDarkTheme) colors.accentLight else colors.textTertiary,
                             fontSize = 12.sp
                         )
-                    )
+                    }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))

@@ -411,7 +411,7 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
         } else {
             scale.animateTo(
                 1f,
-                spring(dampingRatio = 0.38f, stiffness = Spring.StiffnessMediumHigh)
+                spring(dampingRatio = 0.38f, stiffness = Spring.StiffnessMedium)
             )
         }
     }

@@ -1031,7 +1031,7 @@ class MainActivity : ComponentActivity() {
                     else tr("正在启动…", "Starting…"))
 
             val startInstanceName = configState.instanceName.ifEmpty { "default" }
-            mgr.start(startInstanceName, config, noTun)
+            mgr.start(startInstanceName, config, noTun, config.dnsServer)
         } catch (t: Throwable) {
             updateConnectionState(ConnectionStatus.ERROR,
                 subLabel = tr("错误: ${t.message}", "Error: ${t.message}"))

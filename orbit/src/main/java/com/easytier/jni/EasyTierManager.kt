@@ -61,6 +61,8 @@ class EasyTierManager private constructor(
     // ── 实例状态 ──
     private var currentInstanceName: String = ""
     private var currentNoTunMode: Boolean = false
+    /** Custom DNS to push into the TUN interface (null = keep system DNS) */
+    private var currentDnsServer: String? = null
 
     @Volatile
     private var _isRunning = false
@@ -101,7 +103,7 @@ class EasyTierManager private constructor(
      * @param networkConfig TOML 网络配置
      * @param noTunMode 是否无 TUN 模式（仅运行网络层，不启动 VPN）
      */
-    fun start(instanceName: String, networkConfig: String, noTunMode: Boolean = false) {
+    fun start(instanceName: String, networkConfig: String, noTunMode: Boolean = false, dnsServer: String? = null) {
         if (_isRunning) {
             AppLogger.w(TAG, "EasyTier is already running")
             return
@@ -109,6 +111,10 @@ class EasyTierManager private constructor(
 
         currentInstanceName = instanceName
         currentNoTunMode = noTunMode
+        currentDnsServer = dnsServer?.trim()?.takeIf { it.isNotEmpty() }
+        if (currentDnsServer != null) {
+            AppLogger.i(TAG, "Custom DNS will be pushed to TUN: $currentDnsServer")
+        }
 
         try {
             val result = EasyTierJNI.runNetworkInstance(networkConfig)
@@ -188,8 +194,9 @@ class EasyTierManager private constructor(
             intent.putExtra("ipv4_address", ipv4)
             intent.putStringArrayListExtra("proxy_cidrs", ArrayList(proxyCidrs))
             intent.putExtra("instance_name", currentInstanceName)
+            currentDnsServer?.let { intent.putExtra("dns_server", it) }
             appContext.startService(intent)
-            AppLogger.i(TAG, "VpnService started - IPv4: $ipv4, CIDRs: $proxyCidrs")
+            AppLogger.i(TAG, "VpnService started - IPv4: $ipv4, CIDRs: $proxyCidrs, DNS: $currentDnsServer")
         } catch (e: Exception) {
             AppLogger.e(TAG, "Exception in startVpnService", e)
         }

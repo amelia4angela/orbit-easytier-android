@@ -282,6 +282,14 @@ fun ConfigForm(
                             colors = colors
                         )
 
+                        HmTextField(
+                            value = config.dnsServer,
+                            onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
+                            label = T("DNS 服务器", "DNS Server", langZh),
+                            placeholder = T("留空=系统 DNS", "Empty=System DNS", langZh),
+                            colors = colors
+                        )
+
                         // Performance
                         SectionLabel(T("性能", "Performance", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -60,6 +60,7 @@ object TomlUtils {
         j.put("compression", s.compression)
         j.put("proxyNetworks", s.proxyNetworks)
         j.put("exitNodes", s.exitNodes)
+        j.put("dnsServer", s.dnsServer)
     }
 
     /** Deserialize JSONObject → [ConfigState] (from file load). */
@@ -102,7 +103,8 @@ object TomlUtils {
         encryptAlgo = j.optString("encryptAlgo"),
         compression = j.optString("compression"),
         proxyNetworks = j.optString("proxyNetworks"),
-        exitNodes = j.optString("exitNodes")
+        exitNodes = j.optString("exitNodes"),
+        dnsServer = j.optString("dnsServer")
     )
 
     // ═══════════════════════════════════════════════

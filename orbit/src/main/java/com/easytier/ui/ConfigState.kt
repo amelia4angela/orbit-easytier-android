@@ -61,5 +61,7 @@ data class ConfigState(
     val encryptAlgo: String = "",
     val compression: String = "",
     val proxyNetworks: String = "",
-    val exitNodes: String = ""
+    val exitNodes: String = "",
+    // Custom DNS server pushed to the TUN interface (empty = system DNS)
+    val dnsServer: String = ""
 )

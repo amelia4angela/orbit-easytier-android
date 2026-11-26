@@ -83,6 +83,12 @@ class EasyTierVpnService : VpnService() {
             builder.addRoute("192.168.0.0", 16)
             builder.setSession(name)
 
+            // Custom DNS pushed into the TUN interface (empty = keep system DNS)
+            intent.getStringExtra("dns_server")?.trim()?.takeIf { it.isNotEmpty() }?.let { dns ->
+                builder.addDnsServer(dns)
+                AppLogger.i(TAG, "TUN DNS server set to $dns")
+            }
+
             vpnInterface = builder.establish()
             if (vpnInterface == null) {
                 AppLogger.e(TAG, "VPN establish returned null")

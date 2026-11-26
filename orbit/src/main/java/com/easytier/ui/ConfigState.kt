@@ -63,5 +63,7 @@ data class ConfigState(
     val proxyNetworks: String = "",
     val exitNodes: String = "",
     // Custom DNS server pushed to the TUN interface (empty = system DNS)
-    val dnsServer: String = ""
+    val dnsServer: String = "",
+    // Additional peer URIs (e.g. tcp://host:port), beyond the main server+port
+    val extraServers: List<String> = emptyList()
 )

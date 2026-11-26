@@ -116,6 +116,60 @@ fun ConfigForm(
                     )
                 }
 
+                // Extra servers (multiple peers) — list + add
+                if (config.extraServers.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        config.extraServers.forEachIndexed { index, uri ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    uri,
+                                    color = colors.textSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.inputBg)
+                                        .clickable {
+                                            onConfigChange(config.copy(extraServers = config.extraServers.filterIndexed { i, _ -> i != index }))
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) { Text("✕", color = colors.dangerText, fontSize = 12.sp) }
+                            }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    var newServer by remember { mutableStateOf("") }
+                    HmTextField(
+                        value = newServer,
+                        onValueChange = { newServer = it },
+                        label = T("更多服务器", "More Servers", langZh),
+                        placeholder = T("tcp://host:port", "tcp://host:port", langZh),
+                        modifier = Modifier.weight(1f),
+                        colors = colors
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.accent.copy(alpha = 0.15f))
+                            .clickable {
+                                val v = newServer.trim()
+                                if (v.isNotEmpty() && v !in config.extraServers) {
+                                    onConfigChange(config.copy(extraServers = config.extraServers + v))
+                                    newServer = ""
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) { Text("＋", color = colors.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                }
+
                 // Local IP
                 HmTextField(
                     value = config.ipAddress,

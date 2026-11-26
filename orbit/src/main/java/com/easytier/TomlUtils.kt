@@ -61,6 +61,7 @@ object TomlUtils {
         j.put("proxyNetworks", s.proxyNetworks)
         j.put("exitNodes", s.exitNodes)
         j.put("dnsServer", s.dnsServer)
+        j.put("extraServers", org.json.JSONArray(s.extraServers))
     }
 
     /** Deserialize JSONObject → [ConfigState] (from file load). */
@@ -104,7 +105,10 @@ object TomlUtils {
         compression = j.optString("compression"),
         proxyNetworks = j.optString("proxyNetworks"),
         exitNodes = j.optString("exitNodes"),
-        dnsServer = j.optString("dnsServer")
+        dnsServer = j.optString("dnsServer"),
+        extraServers = j.optJSONArray("extraServers")?.let { arr ->
+            (0 until arr.length()).map { arr.getString(it) }
+        } ?: emptyList()
     )
 
     // ═══════════════════════════════════════════════
@@ -142,6 +146,14 @@ object TomlUtils {
 
         sb.append("[[peer]]\n")
         sb.append("uri = \"$peerUri\"\n\n")
+
+        // Additional peers (multiple servers)
+        for (extra in s.extraServers) {
+            val uri = extra.trim()
+            if (uri.isEmpty()) continue
+            sb.append("[[peer]]\n")
+            sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+        }
 
         if (s.disableIpv6) sb.append("disable_ipv6 = true\n")
         if (s.noTun) sb.append("no_tun = true\n")

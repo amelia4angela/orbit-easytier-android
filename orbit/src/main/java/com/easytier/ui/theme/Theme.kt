@@ -75,7 +75,7 @@ fun EasyTierTheme(
     val appCtx = androidx.compose.ui.platform.LocalContext.current
     val colorScheme = when {
         dynamicColor && android.os.Build.VERSION.SDK_INT >= 27 ->
-            wallpaperScheme(appCtx, darkTheme)
+            accentScheme(appCtx, darkTheme)
         darkTheme -> DarkColorScheme
         else -> YouthfulLightColorScheme
     }
@@ -98,15 +98,14 @@ fun EasyTierTheme(
     }
 }
 
-/** Material You style dynamic color from the wallpaper's primary color (API 27+). */
-@androidx.annotation.RequiresApi(27)
-private fun wallpaperScheme(
+/** Material You style dynamic color from the system accent color. */
+private fun accentScheme(
     ctx: android.content.Context,
     dark: Boolean
 ): androidx.compose.material3.ColorScheme {
     val fallback = if (dark) 0xFF8B5CF6.toInt() else 0xFF7C69F0.toInt()
     val primary = try {
-        android.app.WallpaperManager.getInstance(ctx).getWallpaperColors()?.primaryColor?.toArgb() ?: fallback
+        android.provider.Settings.Secure.getInt(ctx.contentResolver, "accent_color")
     } catch (t: Throwable) {
         fallback
     }

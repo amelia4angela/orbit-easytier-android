@@ -1,10 +1,14 @@
 package com.easytier.ui
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -364,4 +368,34 @@ fun Modifier.flGlassCard(
         .clip(shape)
         .background(colors.surface)
         .border(0.5.dp, colors.glassHighlight, shape)
+}
+
+
+/**
+ * FlClash-style elastic press: springy scale-down while pressed,
+ * bouncy release, fires [onClick] on tap.
+ */
+@Composable
+fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.93f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "elasticScale"
+    )
+    return this
+        .scale(scale)
+        .pointerInput(onClick) {
+            detectTapGestures(
+                onPress = {
+                    pressed = true
+                    tryAwaitRelease()
+                    pressed = false
+                },
+                onTap = { onClick() }
+            )
+        }
 }

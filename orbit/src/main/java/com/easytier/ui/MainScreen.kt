@@ -1,6 +1,10 @@
 package com.easytier.ui
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -119,7 +123,15 @@ fun MainScreen(
                     onBack = { showAboutPage = false }
                 )
             } else {
-                when (currentTab) {
+                AnimatedContent(
+                    targetState = currentTab,
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInVertically { it / 6 })
+                            .togetherWith(fadeOut(tween(140)))
+                    },
+                    label = "tabTransition"
+                ) { tab ->
+                when (tab) {
                     Tab.STATUS -> StatusTab(
                     connectionState = connectionState,
                     onToggleConnection = onToggleConnection,
@@ -153,13 +165,20 @@ fun MainScreen(
                     onConfigServer = onConfigServer,
                     isDarkTheme = isDarkTheme,
                     onToggleTheme = onToggleTheme,
+                    dynamicColor = dynamicColor,
+                    onToggleDynamic = {
+                        dynamicColor = !dynamicColor
+                        getSharedPreferences(PREFS_THEME, MODE_PRIVATE).edit()
+                            .putBoolean("dynamic_color", dynamicColor).apply()
+                    },
                     onNavigateToAbout = { showAboutPage = true },
                     isConnected = connectionState.status == ConnectionStatus.RUNNING
                             || connectionState.status == ConnectionStatus.NO_TUN,
                     connectionStartTime = connectionStartTime
                 )
                 Tab.LOGS -> LogsTab(langZh = langZh)
-            }
+                }
+                }
             }
         }
 
@@ -299,7 +318,7 @@ private fun BottomNavigationBar(
                         .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(pillBg)
-                        .clickable { onTabSelected(tab) }
+                        .elasticPress { onTabSelected(tab) }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -430,7 +449,7 @@ private fun StatusTab(
                         .clip(RoundedCornerShape(10.dp))
                         .background(colors.surfaceDim)
                         .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(10.dp))
-                        .clickable { onViewLogs() }
+                        .elasticPress { onViewLogs() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -445,7 +464,7 @@ private fun StatusTab(
                         .clip(RoundedCornerShape(10.dp))
                         .background(colors.surfaceDim)
                         .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(10.dp))
-                        .clickable { onToggleConnection() }
+                        .elasticPress { onToggleConnection() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -690,6 +709,8 @@ private fun MoreTab(
     onConfigServer: () -> Unit,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    dynamicColor: Boolean,
+    onToggleDynamic: () -> Unit,
     onNavigateToAbout: () -> Unit,
     isConnected: Boolean = false,
     connectionStartTime: Long = 0L
@@ -868,6 +889,24 @@ private fun MoreTab(
                         Text(
                             T("深色", "Dark", langZh),
                             color = if (isDarkTheme) colors.accentLight else colors.textTertiary,
+                            fontSize = 12.sp
+                        )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (dynamicColor) colors.accentContainer else colors.inputBg)
+                            .border(
+                                0.5.dp,
+                                if (dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onToggleDynamic() }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            T("取色", "You", langZh),
+                            color = if (dynamicColor) colors.accentLight else colors.textTertiary,
                             fontSize = 12.sp
                         )
                     }

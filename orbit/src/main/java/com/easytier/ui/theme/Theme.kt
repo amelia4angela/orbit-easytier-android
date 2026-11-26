@@ -68,9 +68,15 @@ private val YouthfulLightColorScheme = lightColorScheme(
 @Composable
 fun EasyTierTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else YouthfulLightColorScheme
+    val colorScheme = when {
+        dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ->
+            androidx.compose.material3.dynamicColorScheme(androidx.compose.ui.platform.LocalContext.current)
+        darkTheme -> DarkColorScheme
+        else -> YouthfulLightColorScheme
+    }
 
     // Tint the status bar
     val view = LocalView.current

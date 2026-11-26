@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
     // ── Compose-Observed State ──
     private var langZh by mutableStateOf(true)
     private var isDarkTheme by mutableStateOf(false)
+    private var dynamicColor by mutableStateOf(false)
     private var configState by mutableStateOf(ConfigState())
     private var connectionState by mutableStateOf(ConnectionButtonState())
     private var myNodeItem by mutableStateOf<PeerInfoItem?>(null)
@@ -121,6 +122,7 @@ class MainActivity : ComponentActivity() {
 
         langZh = getSharedPreferences(PREFS_LANG, MODE_PRIVATE).getBoolean("lang_zh", true)
         isDarkTheme = getSharedPreferences(PREFS_THEME, MODE_PRIVATE).getBoolean("dark_theme", false)
+        dynamicColor = getSharedPreferences(PREFS_THEME, MODE_PRIVATE).getBoolean("dynamic_color", false)
 
         // ➕ 恢复上次使用的配置名，启动时自动加载对应的配置
         val statePrefs = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
@@ -216,7 +218,7 @@ class MainActivity : ComponentActivity() {
         notificationHelper?.createChannels()
 
         setContent {
-            EasyTierTheme(darkTheme = isDarkTheme) {
+            EasyTierTheme(darkTheme = isDarkTheme, dynamicColor = dynamicColor) {
                 MainScreen(
                     connectionState = connectionState,
                     onToggleConnection = {

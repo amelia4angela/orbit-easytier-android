@@ -117,7 +117,8 @@ fun MainScreen(
                     myNodeItem = myNodeItem,
                     peerItems = peerItems,
                     onViewLogs = onViewLogs,
-                    langZh = langZh
+                    langZh = langZh,
+                    connectionStartTime = connectionStartTime
                 )
                 Tab.CONFIG -> ConfigTab(
                     config = config,
@@ -233,13 +234,51 @@ private fun StatusTab(
     myNodeItem: PeerInfoItem?,
     peerItems: List<PeerInfoItem>,
     onViewLogs: () -> Unit,
-    langZh: Boolean
+    langZh: Boolean,
+    connectionStartTime: Long = 0L
 ) {
     val colors = currentColors()
     val scrollState = rememberScrollState()
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
                       connectionState.status == ConnectionStatus.NO_TUN
     val isStarting = connectionState.status == ConnectionStatus.STARTING
+
+    // ── Uptime ticker ──
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(connectionStartTime, isConnected) {
+        while (isConnected && connectionStartTime > 0L) {
+            now = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+    val uptime = if (isConnected && connectionStartTime > 0L) {
+        val sec = (now - connectionStartTime) / 1000
+        "%02d:%02d:%02d".format(sec / 3600, (sec % 3600) / 60, sec % 60)
+    } else ""
+
+    // ── Speed history for sparkline (sample on change, keep 40 pts) ──
+    val speedHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
+    val rxSpeed = myNodeItem?.rxSpeed ?: ""
+    LaunchedEffect(rxSpeed) {
+        val v = parseSpeedValue(rxSpeed)
+        if (v > 0f) {
+            speedHistory.add(v)
+            if (speedHistory.size > 40) speedHistory.removeAt(0)
+        }
+    }
+
+    fun fmtBytes(b: Long): String {
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        var v = b.toDouble()
+        var i = 0
+        while (v >= 1024 && i < units.size - 1) { v /= 1024; i++ }
+        return "%.1f %s".format(v, units[i])
+    }
+
+    val peerCount = (if (myNodeItem != null) 1 else 0) + peerItems.size
+    val latency = myNodeItem?.let {
+        if (it.latencyUs > 0) "${it.latencyUs / 1000} ms" else ""
+    } ?: ""
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -248,12 +287,29 @@ private fun StatusTab(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ConnectionBanner(
+            // ── FlClash-style status card with blob button ──
+            FlClashStatusCard(
                 state = connectionState,
                 onClick = onToggleConnection,
-                peerCount = (if (myNodeItem != null) 1 else 0) + peerItems.size,
+                nodeLabel = myNodeItem?.ip ?: connectionState.subLabel,
+                nodeSub = myNodeItem?.let { "${it.hostname}  ·  ${it.protocol}" } ?: "",
+                uptime = uptime,
+                peerCount = peerCount,
+                latency = latency,
                 langZh = langZh
             )
+
+            // ── Speed cards (only when running) ──
+            if (isConnected && myNodeItem != null) {
+                SpeedStatRow(
+                    rxSpeed = rxSpeed,
+                    txSpeed = myNodeItem.txSpeed,
+                    rxTotal = fmtBytes(myNodeItem.rxBytes),
+                    txTotal = fmtBytes(myNodeItem.txBytes),
+                    history = speedHistory,
+                    langZh = langZh
+                )
+            }
 
             PeerInfoSection(
                 myNode = myNodeItem,
@@ -299,16 +355,7 @@ private fun StatusTab(
 
             Spacer(Modifier.height(80.dp))
         }
-
-        // Floating control button
-        ControlFAB(
-            isConnected = isConnected,
-            isStarting = isStarting,
-            onClick = onToggleConnection,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp)
-        )
+        // ControlFAB removed — connect button now lives inside the status card
     }
 }
 

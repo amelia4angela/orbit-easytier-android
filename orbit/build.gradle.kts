@@ -16,12 +16,12 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            // ⚠ Customize this for your environment
-            storeFile = file("/tmp/easytier.keystore")
-            storePassword = "123456"
-            keyAlias = "easytier"
-            keyPassword = "123456"
+        create("orbit") {
+            // Signed with the project's own keystore (see ~/.gradle/gradle.properties)
+            storeFile = file(project.findProperty("orbitStoreFile") as String? ?: "/root/.orbit.keystore")
+            storePassword = project.findProperty("orbitStorePassword") as String?
+            keyAlias = project.findProperty("orbitKeyAlias") as String? ?: "orbit"
+            keyPassword = project.findProperty("orbitKeyPassword") as String?
         }
     }
 
@@ -29,7 +29,10 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("orbit")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("orbit")
         }
     }
 

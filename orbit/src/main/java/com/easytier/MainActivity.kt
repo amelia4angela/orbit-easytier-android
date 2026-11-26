@@ -639,7 +639,7 @@ class MainActivity : ComponentActivity() {
             setNegativeButton(if (zh) "跳过" else "Skip") { _, _ ->
                 prefs.edit().putBoolean("permissions_intro_shown", true).apply()
                 val warning = if (zh)
-                    "部分功能可能无法正常使用 — 可在「更多」页面随时开启权限"
+                    "部分功能可能无法正常使用 — 可在「设置」页面随时开启权限"
                 else
                     "Some features may not work — you can enable permissions later in Settings"
                 Toast.makeText(this@MainActivity, warning, Toast.LENGTH_LONG).show()

@@ -79,7 +79,9 @@ fun MainScreen(
     onConfigServer: () -> Unit,
     onToggleLanguage: () -> Unit,
     onLaunchConfigEditor: () -> Unit,
-    onViewLogs: () -> Unit,
+    // Kept for caller compatibility: the log entry now lives in Settings → View Logs,
+    // which switches to the Logs tab instead of opening a dialog.
+    @Suppress("UNUSED_PARAMETER") onViewLogs: () -> Unit,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     dynamicColor: Boolean,
@@ -156,7 +158,6 @@ fun MainScreen(
                     onToggleConnection = onToggleConnection,
                     myNodeItem = myNodeItem,
                     peerItems = peerItems,
-                    onViewLogs = onViewLogs,
                     langZh = langZh,
                     connectionStartTime = connectionStartTime
                 )
@@ -187,6 +188,8 @@ fun MainScreen(
                     dynamicColor = dynamicColor,
                     onToggleDynamic = onToggleDynamic,
                     onNavigateToAbout = { showAboutPage = true },
+                    onToggleConnection = onToggleConnection,
+                    onOpenLogs = { currentTab = Tab.LOGS },
                     isConnected = connectionState.status == ConnectionStatus.RUNNING
                             || connectionState.status == ConnectionStatus.NO_TUN,
                     connectionStartTime = connectionStartTime
@@ -216,10 +219,12 @@ fun MainScreen(
 @Composable
 private fun LogsTab(langZh: Boolean) {
     val colors = currentColors()
-    var logs by remember { mutableStateOf(com.easytier.AppLogger.getLogs()) }
+    var collectionOn by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
+    var logs by remember { mutableStateOf(if (collectionOn) com.easytier.AppLogger.getLogs() else "") }
     LaunchedEffect(Unit) {
         while (true) {
-            logs = com.easytier.AppLogger.getLogs()
+            collectionOn = com.easytier.AppLogger.enabled
+            logs = if (collectionOn) com.easytier.AppLogger.getLogs() else ""
             delay(2000L)
         }
     }
@@ -249,10 +254,14 @@ private fun LogsTab(langZh: Boolean) {
                     modifier = Modifier
                         .size(7.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(colors.statusGood)
+                        .background(if (collectionOn) colors.statusGood else colors.textTertiary)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(T("自动刷新", "Auto-refresh", langZh), color = colors.textTertiary, fontSize = 11.sp)
+                Text(
+                    if (collectionOn) T("自动刷新", "Auto-refresh", langZh)
+                    else T("已关闭", "Off", langZh),
+                    color = colors.textTertiary, fontSize = 11.sp
+                )
             }
         }
         Box(
@@ -262,14 +271,22 @@ private fun LogsTab(langZh: Boolean) {
                 .background(colors.surface)
                 .padding(12.dp)
         ) {
-            if (logs.isEmpty()) {
-                Text(
+            when {
+                !collectionOn -> Text(
+                    T(
+                        "日志收集已关闭，请到设置开启",
+                        "Log collection is off — enable it in Settings",
+                        langZh
+                    ),
+                    color = colors.textTertiary,
+                    fontSize = 13.sp
+                )
+                logs.isEmpty() -> Text(
                     T("暂无日志", "No logs yet", langZh),
                     color = colors.textTertiary,
                     fontSize = 13.sp
                 )
-            } else {
-                Text(
+                else -> Text(
                     text = logs,
                     color = colors.textSecondary,
                     fontSize = 10.sp,
@@ -317,10 +334,10 @@ private fun BottomNavigationBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(
-                Triple(Icons.Rounded.Dashboard, T("首页", "Home", langZh), Tab.STATUS),
+                Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
                 Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
                 Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
-                Triple(Icons.Rounded.Build, T("更多", "More", langZh), Tab.MORE)
+                Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
             ).forEach { (icon, label, tab) ->
                 val isActive = currentTab == tab
                 val pillBg by animateColorAsState(
@@ -370,15 +387,12 @@ private fun StatusTab(
     onToggleConnection: () -> Unit,
     myNodeItem: PeerInfoItem?,
     peerItems: List<PeerInfoItem>,
-    onViewLogs: () -> Unit,
     langZh: Boolean,
     connectionStartTime: Long = 0L
 ) {
-    val colors = currentColors()
     val scrollState = rememberScrollState()
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
                       connectionState.status == ConnectionStatus.NO_TUN
-    val isStarting = connectionState.status == ConnectionStatus.STARTING
 
     // ── Uptime ticker ──
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -455,40 +469,6 @@ private fun StatusTab(
                 onToggle = {},
                 langZh = langZh
             )
-
-            // Quick actions
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.surfaceDim)
-                        .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(10.dp))
-                        .elasticPress { onViewLogs() }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "☰ ${T("查看日志", "View Log", langZh)}",
-                        color = colors.textSecondary, fontSize = 13.sp
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.surfaceDim)
-                        .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(10.dp))
-                        .elasticPress { onToggleConnection() }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "↻ ${T("重启服务", "Restart", langZh)}",
-                        color = colors.textSecondary, fontSize = 13.sp
-                    )
-                }
-            }
 
             Spacer(Modifier.height(80.dp))
         }
@@ -714,7 +694,7 @@ private fun ActionBtn(
 }
 
 // ═══════════════════════════════════════════════════
-//  More Tab — Features & About
+//  Settings Tab (previously "More") — features, prefs & about
 // ═══════════════════════════════════════════════════
 
 @Composable
@@ -727,6 +707,8 @@ private fun MoreTab(
     dynamicColor: Boolean,
     onToggleDynamic: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onToggleConnection: () -> Unit = {},
+    onOpenLogs: () -> Unit = {},
     isConnected: Boolean = false,
     connectionStartTime: Long = 0L
 ) {
@@ -745,6 +727,23 @@ private fun MoreTab(
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateDialogVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // ── Language / Theme pickers + log collection ──
+    var langDialogVisible by remember { mutableStateOf(false) }
+    var themeDialogVisible by remember { mutableStateOf(false) }
+    var logEnabled by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
+
+    // 当前主题模式：0 = 浅色, 1 = 深色, 2 = 跟随系统
+    val themeIndex = when {
+        dynamicColor -> 2
+        isDarkTheme -> 1
+        else -> 0
+    }
+    val themeValue = when (themeIndex) {
+        2 -> T("跟随系统", "System", langZh)
+        1 -> T("深色", "Dark", langZh)
+        else -> T("浅色", "Light", langZh)
+    }
 
     // Live uptime ticker
     var uptimeText by remember { mutableStateOf("") }
@@ -795,145 +794,92 @@ private fun MoreTab(
                         color = colors.textTertiary, fontSize = 12.sp
                     )
                 }
-                Text("→", color = colors.textTertiary, fontSize = 14.sp)
+                Text("›", color = colors.textTertiary, fontSize = 18.sp)
             }
         }
 
-        // Language Toggle
+        // Restart Core — same call chain as the old dashboard restart button
+        SettingsNavRow(
+            icon = "↻",
+            title = T("重启核心", "Restart Core", langZh),
+            subtitle = T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
+            colors = colors,
+            onClick = { onToggleConnection() }
+        )
+
+        // View Logs — jumps to the Logs tab
+        SettingsNavRow(
+            icon = "☰",
+            title = T("查看日志", "View Logs", langZh),
+            subtitle = T("打开日志页面查看运行记录", "Open the logs page", langZh),
+            colors = colors,
+            onClick = { onOpenLogs() }
+        )
+
+        // Log collection toggle (AppLogger.setEnabled)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(colors.surface)
                 .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .clickable {
+                    val next = !logEnabled
+                    logEnabled = next
+                    com.easytier.AppLogger.setEnabled(next)
+                }
                 .padding(16.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("⋮", fontSize = 20.sp)
-                    Spacer(Modifier.width(12.dp))
+                Text("≡", fontSize = 20.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        T("语言", "Language", langZh),
+                        T("日志收集", "Log Collection", langZh),
                         color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
                     )
+                    Text(
+                        T(
+                            "默认关闭；开启后最多保留最近 3 天、100 条",
+                            "Off by default; keeps the last 3 days / 100 lines",
+                            langZh
+                        ),
+                        color = colors.textTertiary, fontSize = 12.sp
+                    )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (langZh) colors.accentContainer else colors.inputBg)
-                            .border(
-                                0.5.dp,
-                                if (langZh) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { if (!langZh) onToggleLanguage() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text("中文", color = if (langZh) colors.accentLight else colors.textTertiary, fontSize = 12.sp)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (!langZh) colors.accentContainer else colors.inputBg)
-                            .border(
-                                0.5.dp,
-                                if (!langZh) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { if (langZh) onToggleLanguage() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text("English", color = if (!langZh) colors.accentLight else colors.textTertiary, fontSize = 12.sp)
-                    }
-                }
+                Spacer(Modifier.width(8.dp))
+                HmToggle(
+                    label = if (logEnabled) T("已开启", "On", langZh) else T("已关闭", "Off", langZh),
+                    checked = logEnabled,
+                    onCheckedChange = { next ->
+                        logEnabled = next
+                        com.easytier.AppLogger.setEnabled(next)
+                    },
+                    colors = colors
+                )
             }
         }
 
-        // Theme Toggle
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (isDarkTheme) "●" else "○", fontSize = 20.sp)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        T("主题", "Theme", langZh),
-                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (!isDarkTheme && !dynamicColor) colors.accentContainer else colors.inputBg)
-                            .border(
-                                0.5.dp,
-                                if (!isDarkTheme && !dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { if (dynamicColor) onToggleDynamic(); if (isDarkTheme) onToggleTheme() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            T("浅色", "Light", langZh),
-                            color = if (!isDarkTheme) colors.accentLight else colors.textTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isDarkTheme && !dynamicColor) colors.accentContainer else colors.inputBg)
-                            .border(
-                                0.5.dp,
-                                if (isDarkTheme && !dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { if (dynamicColor) onToggleDynamic(); if (!isDarkTheme) onToggleTheme() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            T("深色", "Dark", langZh),
-                            color = if (isDarkTheme) colors.accentLight else colors.textTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (dynamicColor) colors.accentContainer else colors.inputBg)
-                            .border(
-                                0.5.dp,
-                                if (dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { onToggleDynamic() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            T("跟随系统", "System", langZh),
-                            color = if (dynamicColor) colors.accentLight else colors.textTertiary,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
+        // Language — current value + chevron, opens an Apple-style radio sheet
+        SettingsNavRow(
+            icon = "⋮",
+            title = T("语言", "Language", langZh),
+            value = if (langZh) "中文" else "English",
+            colors = colors,
+            onClick = { langDialogVisible = true }
+        )
+
+        // Theme — current value + chevron, opens a 3-way radio sheet
+        SettingsNavRow(
+            icon = if (isDarkTheme) "●" else "○",
+            title = T("主题", "Theme", langZh),
+            value = themeValue,
+            colors = colors,
+            onClick = { themeDialogVisible = true }
+        )
 
         // Check Update card (clickable → dialog with download options)
         Box(
@@ -988,7 +934,7 @@ private fun MoreTab(
                         color = colors.textTertiary, fontSize = 12.sp
                     )
                 }
-                Text("→", color = colors.textTertiary, fontSize = 14.sp)
+                Text("›", color = colors.textTertiary, fontSize = 18.sp)
             }
         }
 
@@ -1015,7 +961,7 @@ private fun MoreTab(
                         color = colors.textTertiary, fontSize = 12.sp
                     )
                 }
-                Text("→", color = colors.textTertiary, fontSize = 14.sp)
+                Text("›", color = colors.textTertiary, fontSize = 18.sp)
             }
         }
 
@@ -1057,6 +1003,189 @@ private fun MoreTab(
         },
         onDismiss = { updateDialogVisible = false }
     )
+
+    // Language picker — Apple-style radio sheet
+    SettingsChoiceDialog(
+        visible = langDialogVisible,
+        title = T("语言", "Language", langZh),
+        options = listOf("简体中文", "English"),
+        selectedIndex = if (langZh) 0 else 1,
+        langZh = langZh,
+        onSelect = { idx ->
+            if (idx == 0 && !langZh) onToggleLanguage()
+            if (idx == 1 && langZh) onToggleLanguage()
+            langDialogVisible = false
+        },
+        onDismiss = { langDialogVisible = false }
+    )
+
+    // Theme picker — light / dark / follow-system, same state machine as the old pills
+    SettingsChoiceDialog(
+        visible = themeDialogVisible,
+        title = T("主题", "Theme", langZh),
+        options = listOf(
+            T("浅色", "Light", langZh),
+            T("深色", "Dark", langZh),
+            T("跟随系统", "System", langZh)
+        ),
+        selectedIndex = themeIndex,
+        langZh = langZh,
+        onSelect = { idx ->
+            when (idx) {
+                0 -> { if (dynamicColor) onToggleDynamic(); if (isDarkTheme) onToggleTheme() }
+                1 -> { if (dynamicColor) onToggleDynamic(); if (!isDarkTheme) onToggleTheme() }
+                2 -> { if (!dynamicColor) onToggleDynamic() }
+            }
+            themeDialogVisible = false
+        },
+        onDismiss = { themeDialogVisible = false }
+    )
+}
+
+/**
+ * Settings list row: icon + title (+ optional subtitle) on the left,
+ * current value and a chevron on the right.
+ */
+@Composable
+private fun SettingsNavRow(
+    icon: String,
+    title: String,
+    colors: AppColors,
+    subtitle: String? = null,
+    value: String? = null,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surface)
+            .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 20.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                )
+                if (subtitle != null) {
+                    Text(subtitle, color = colors.textTertiary, fontSize = 12.sp)
+                }
+            }
+            if (value != null) {
+                Text(value, color = colors.textSecondary, fontSize = 13.sp)
+                Spacer(Modifier.width(6.dp))
+            }
+            Text("›", color = colors.textTertiary, fontSize = 18.sp)
+        }
+    }
+}
+
+/**
+ * Apple-style single-choice sheet: one option per row, the selected row shows a
+ * check mark. Enter/exit mirrors the other dialogs (scale + fade with HarmonyEasing).
+ */
+@Composable
+private fun SettingsChoiceDialog(
+    visible: Boolean,
+    title: String,
+    options: List<String>,
+    selectedIndex: Int,
+    langZh: Boolean,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = currentColors()
+
+    // Keep the Dialog mounted until the exit animation finishes.
+    var mounted by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            mounted = true
+        } else if (mounted) {
+            delay(320)
+            mounted = false
+        }
+    }
+    if (!mounted) return
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
+            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
+                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .flGlassCard(colors, 20.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = colors.textPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 6.dp)
+                )
+                options.forEachIndexed { idx, label ->
+                    val selected = idx == selectedIndex
+                    val rowBg by animateColorAsState(
+                        targetValue = if (selected) colors.accentContainer else Color.Transparent,
+                        animationSpec = tween(220, easing = HarmonyEasing),
+                        label = "choiceRowBg"
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(rowBg)
+                            .clickable { onSelect(idx) }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (selected) colors.accentLight else colors.textSecondary,
+                            fontSize = 14.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (selected) {
+                            Text("✓", color = colors.accentLight, fontSize = 14.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onDismiss() }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = T("取消", "Cancel", langZh),
+                        color = colors.textTertiary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════

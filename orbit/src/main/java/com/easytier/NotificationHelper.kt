@@ -14,6 +14,9 @@ import androidx.core.app.NotificationCompat
  * Two channels:
  *   [CHANNEL_VPN_STATUS] — persistent low-priority notification while VPN is running
  *   [CHANNEL_EVENTS] — normal-priority event notifications (connected / disconnected / error)
+ *
+ * All notifications — the ongoing VPN status one and the one-shot event ones — share
+ * the single id [NOTIFY_ID_VPN], so the shade never accumulates more than one Orbit row.
  */
 class NotificationHelper(private val context: Context) {
 
@@ -91,14 +94,16 @@ class NotificationHelper(private val context: Context) {
             .build()
     }
 
-    /** Post or update the persistent VPN notification. */
+    /** Post or update the persistent VPN notification (same id → in-place refresh). */
     fun showVpnNotification(ip: String?, durationText: String, isRunning: Boolean, langZh: Boolean) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFY_ID_VPN, buildVpnNotification(ip, durationText, isRunning, langZh))
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(NOTIFY_ID_VPN, buildVpnNotification(ip, durationText, isRunning, langZh))
+        } catch (_: Exception) { }
     }
 
-    /** Cancel the persistent VPN notification. */
-    fun cancelVpnNotification() {
+    /** Cancel the Orbit notification (VPN status or last event — they share one id). */
+    fun cancel() {
         try {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(NOTIFY_ID_VPN)
@@ -126,8 +131,9 @@ class NotificationHelper(private val context: Context) {
 
         try {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            // Unique ID each time so they don't overwrite each other
-            nm.notify(System.currentTimeMillis().toInt(), notification)
+            // Same id as the VPN status notification: an event replaces the previous row
+            // instead of stacking a new one every connect/disconnect cycle.
+            nm.notify(NOTIFY_ID_VPN, notification)
         } catch (_: Exception) { }
     }
 }

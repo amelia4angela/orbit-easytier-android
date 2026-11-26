@@ -354,6 +354,24 @@ fun ConfigForm(
 
                         // P2P
                         SectionLabel(T("点对点 (P2P)", "Peer-to-Peer (P2P)", langZh), colors)
+                        HmToggle(
+                            checked = config.aggressiveP2p,
+                            onCheckedChange = { onConfigChange(config.copy(aggressiveP2p = it)) },
+                            label = T("激进 P2P", "Aggressive P2P", langZh),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = colors
+                        )
+                        Text(
+                            T(
+                                "更快建立 P2P 直连（立即并发打洞）；若出现连不上的情况可关闭",
+                                "Faster P2P direct links (immediate parallel hole punching); turn off if connecting fails",
+                                langZh
+                            ),
+                            color = colors.textTertiary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
+                        )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             HmToggle(checked = config.disableP2p, onCheckedChange = { onConfigChange(config.copy(disableP2p = it)) }, label = T("禁用 P2P", "Disable P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
                             HmToggle(checked = config.p2pOnly, onCheckedChange = { onConfigChange(config.copy(p2pOnly = it)) }, label = T("仅 P2P", "P2P Only", langZh), modifier = Modifier.weight(1f), colors = colors)

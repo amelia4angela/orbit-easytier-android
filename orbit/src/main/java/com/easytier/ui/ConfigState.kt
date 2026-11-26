@@ -38,6 +38,12 @@ data class ConfigState(
     val p2pOnly: Boolean = false,
     val lazyP2p: Boolean = false,
     val needP2p: Boolean = false,
+    /**
+     * 激进 P2P（默认开启）：强制 need_p2p = true、lazy_p2p 不输出、
+     * 且不输出任何 disable_*_hole_punching = true —— 即立即并发打洞，
+     * 宁可直连失败也不默默走中继。
+     */
+    val aggressiveP2p: Boolean = true,
 
     // NAT / Hole Punch
     val disableTcpHp: Boolean = false,

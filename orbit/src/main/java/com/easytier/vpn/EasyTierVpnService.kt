@@ -108,6 +108,9 @@ class EasyTierVpnService : VpnService() {
             // ── Foreground notification ──
             currentIp = parts[0]
             serviceStartedAt = System.currentTimeMillis()
+            // Drop any leftover row (old event / stale status) before re-posting, then
+            // startForeground with the single shared id so the shade always holds one entry.
+            notificationHelper?.cancel()
             startForeground(
                 NotificationHelper.NOTIFY_ID_VPN,
                 notificationHelper!!.buildVpnNotification(
@@ -127,8 +130,8 @@ class EasyTierVpnService : VpnService() {
         AppLogger.d(TAG, "onDestroy")
         // Stop notification updates
         mainHandler.removeCallbacks(notificationUpdateRunnable)
-        // Cancel the persistent notification
-        notificationHelper?.cancelVpnNotification()
+        // Cancel the notification so nothing lingers in the shade after disconnect
+        notificationHelper?.cancel()
         self = null
         // Android VpnService.super.onDestroy() tears down the TUN internally.
         // Do NOT manually close vpnInterface here — that's what onRevoke is for.
@@ -138,7 +141,7 @@ class EasyTierVpnService : VpnService() {
     override fun onRevoke() {
         AppLogger.d(TAG, "onRevoke: closing fd")
         mainHandler.removeCallbacks(notificationUpdateRunnable)
-        notificationHelper?.cancelVpnNotification()
+        notificationHelper?.cancel()
         try { vpnInterface?.close() } catch (_: Exception) { }
         vpnInterface = null
         self = null

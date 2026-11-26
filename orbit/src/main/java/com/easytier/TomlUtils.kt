@@ -38,6 +38,7 @@ object TomlUtils {
         j.put("p2pOnly", s.p2pOnly)
         j.put("lazyP2p", s.lazyP2p)
         j.put("needP2p", s.needP2p)
+        j.put("aggressiveP2p", s.aggressiveP2p)
         j.put("disableTcpHp", s.disableTcpHp)
         j.put("disableUdpHp", s.disableUdpHp)
         j.put("disableSymHp", s.disableSymHp)
@@ -161,6 +162,8 @@ object TomlUtils {
             p2pOnly = j.optBoolean("p2pOnly"),
             lazyP2p = j.optBoolean("lazyP2p"),
             needP2p = j.optBoolean("needP2p"),
+            // 旧配置没有这个字段 → optBoolean 默认 true（激进）
+            aggressiveP2p = j.optBoolean("aggressiveP2p", true),
             disableTcpHp = j.optBoolean("disableTcpHp"),
             disableUdpHp = j.optBoolean("disableUdpHp"),
             disableSymHp = j.optBoolean("disableSymHp"),
@@ -256,12 +259,19 @@ object TomlUtils {
 
         if (s.disableP2p) sb.append("disable_p2p = true\n")
         if (s.p2pOnly) sb.append("p2p_only = true\n")
-        if (s.lazyP2p) sb.append("lazy_p2p = true\n")
-        if (s.needP2p) sb.append("need_p2p = true\n")
 
-        if (s.disableTcpHp) sb.append("disable_tcp_hole_punching = true\n")
-        if (s.disableUdpHp) sb.append("disable_udp_hole_punching = true\n")
-        if (s.disableSymHp) sb.append("disable_sym_hole_punching = true\n")
+        // 激进 P2P：强制 need_p2p = true、无 lazy_p2p、且禁止任何 disable_*_hole_punching
+        val aggressiveP2p = s.aggressiveP2p
+        if (aggressiveP2p) {
+            sb.append("need_p2p = true\n")
+        } else {
+            if (s.lazyP2p) sb.append("lazy_p2p = true\n")
+            if (s.needP2p) sb.append("need_p2p = true\n")
+        }
+
+        if (s.disableTcpHp && !aggressiveP2p) sb.append("disable_tcp_hole_punching = true\n")
+        if (s.disableUdpHp && !aggressiveP2p) sb.append("disable_udp_hole_punching = true\n")
+        if (s.disableSymHp && !aggressiveP2p) sb.append("disable_sym_hole_punching = true\n")
 
         if (s.enableKcpProxy) sb.append("enable_kcp_proxy = true\n")
         if (s.disableKcpInput) sb.append("disable_kcp_input = true\n")
@@ -470,6 +480,7 @@ object TomlUtils {
         "p2p_only" to "p2pOnly",
         "lazy_p2p" to "lazyP2p",
         "need_p2p" to "needP2p",
+        "aggressive_p2p" to "aggressiveP2p",
         "disable_tcp_hole_punching" to "disableTcpHp",
         "disable_udp_hole_punching" to "disableUdpHp",
         "disable_sym_hole_punching" to "disableSymHp",
@@ -807,6 +818,7 @@ object TomlUtils {
         "p2pOnly" -> c.copy(p2pOnly = b)
         "lazyP2p" -> c.copy(lazyP2p = b)
         "needP2p" -> c.copy(needP2p = b)
+        "aggressiveP2p" -> c.copy(aggressiveP2p = b)
         "disableTcpHp" -> c.copy(disableTcpHp = b)
         "disableUdpHp" -> c.copy(disableUdpHp = b)
         "disableSymHp" -> c.copy(disableSymHp = b)

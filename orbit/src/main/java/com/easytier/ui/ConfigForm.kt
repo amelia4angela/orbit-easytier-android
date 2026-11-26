@@ -53,8 +53,7 @@ fun ConfigForm(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(colors.surface)
+                .flGlassCard(colors, 20.dp)
                 .padding(16.dp)
         ) {
             Column(
@@ -227,8 +226,7 @@ fun ConfigForm(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(colors.surface)
+                .flGlassCard(colors, 20.dp)
         ) {
             Column {
                 Row(

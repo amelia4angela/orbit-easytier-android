@@ -23,6 +23,10 @@ data class AppColors(
     val surfaceBorder: Color,
     // Nav bar
     val navBar: Color,
+    // Glass (floating nav / translucent surfaces)
+    val navGlass: Color,
+    val navGlassBorder: Color,
+    val glassHighlight: Color,
     // Text
     val textPrimary: Color,
     val textSecondary: Color,
@@ -71,6 +75,9 @@ private val lightAppColors = AppColors(
     surfaceDim = LightSurfaceDim,
     surfaceBorder = LightCardBorder,
     navBar = Color.White.copy(alpha = 0.85f),
+    navGlass = Color(0xE6FFFFFF),              // 90% white glass
+    navGlassBorder = Color(0x1F000000),        // 12% black hairline
+    glassHighlight = Color(0x26FFFFFF),        // inner light highlight
     textPrimary = LightTextPrimary,
     textSecondary = LightTextSecondary,
     textTertiary = LightTextTertiary,
@@ -103,7 +110,10 @@ private val darkAppColors = AppColors(
     surface = DarkGlass,
     surfaceDim = DarkGlassStrong,
     surfaceBorder = DarkGlassBorder,
-    navBar = DarkNavBar,
+    navBar = Color(0xE61E1E1E),               // 90% dark glass
+    navGlass = Color(0xCC1E1E1E),              // 80% dark glass
+    navGlassBorder = Color(0x26FFFFFF),        // 15% white hairline
+    glassHighlight = Color(0x0FFFFFFF),        // subtle inner highlight
     textPrimary = DarkTextPrimary,
     textSecondary = DarkTextSecondary,
     textTertiary = DarkTextTertiary,

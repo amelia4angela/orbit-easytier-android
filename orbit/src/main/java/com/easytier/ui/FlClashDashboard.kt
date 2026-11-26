@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -99,8 +101,7 @@ fun FlClashStatusCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(colors.surface)
+            .flGlassCard(colors, 20.dp)
             .padding(16.dp)
     ) {
         Row(
@@ -266,8 +267,7 @@ private fun SpeedStatCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.surface)
+            .flGlassCard(colors, 16.dp)
             .padding(12.dp)
     ) {
         Column {
@@ -347,4 +347,20 @@ fun parseSpeedValue(s: String): Float {
         else -> 1f / 1024f
     }
     return num * mult
+}
+
+
+/** FlClash glass card: soft shadow + rounded surface + inner light hairline. */
+fun Modifier.flGlassCard(
+    colors: com.easytier.ui.theme.AppColors,
+    radius: androidx.compose.ui.unit.Dp = 18.dp
+): Modifier {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(radius)
+    return this
+        .then(Modifier.shadow(elevation = 6.dp, shape = shape, clip = false,
+            ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.10f),
+            spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.10f)))
+        .clip(shape)
+        .background(colors.surface)
+        .border(0.5.dp, colors.glassHighlight, shape)
 }

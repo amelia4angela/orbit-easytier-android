@@ -1,5 +1,7 @@
 package com.easytier.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -261,11 +264,24 @@ private fun BottomNavigationBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.navBar)
-            .border(width = 0.5.dp, color = colors.surfaceBorder, shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp))
-            .padding(top = 6.dp, start = 0.dp, end = 0.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 14.dp,
+                    shape = RoundedCornerShape(24.dp),
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.20f),
+                    spotColor = Color.Black.copy(alpha = 0.20f)
+                )
+                .clip(RoundedCornerShape(24.dp))
+                .background(colors.navGlass)
+                .border(1.dp, colors.navGlassBorder, RoundedCornerShape(24.dp))
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             listOf(
                 Triple(Icons.Rounded.Dashboard, T("首页", "Home", langZh), Tab.STATUS),
                 Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
@@ -273,10 +289,18 @@ private fun BottomNavigationBar(
                 Triple(Icons.Rounded.Build, T("更多", "More", langZh), Tab.MORE)
             ).forEach { (icon, label, tab) ->
                 val isActive = currentTab == tab
+                val pillBg by animateColorAsState(
+                    targetValue = if (isActive) colors.accent else Color.Transparent,
+                    animationSpec = tween(250),
+                    label = "navPill"
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onTabSelected(tab) },
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(pillBg)
+                        .clickable { onTabSelected(tab) }
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -286,21 +310,14 @@ private fun BottomNavigationBar(
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
-                            tint = if (isActive) colors.accent else colors.textTertiary,
-                            modifier = Modifier.size(22.dp)
+                            tint = if (isActive) Color.White else colors.textTertiary,
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = label,
-                            color = if (isActive) colors.textPrimary else colors.textTertiary,
-                            fontSize = 11.sp,
-                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(if (isActive) colors.accent else Color.Transparent)
+                            color = if (isActive) Color.White else colors.textTertiary,
+                            fontSize = 10.sp,
+                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
                 }

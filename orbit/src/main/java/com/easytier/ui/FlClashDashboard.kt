@@ -7,8 +7,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -373,11 +374,22 @@ fun Modifier.flGlassCard(
 
 /**
  * FlClash-style elastic press: springy scale-down while pressed,
- * bouncy release, fires [onClick] on tap.
+ * bouncy release, fires [onClick] on tap. Uses interactionSource
+ * (no pointerInput needed).
  */
 @Composable
 fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { int ->
+            when (int) {
+                is PressInteraction.Press -> pressed = true
+                is PressInteraction.Release -> pressed = false
+                is PressInteraction.Cancel -> pressed = false
+            }
+        }
+    }
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.93f else 1f,
         animationSpec = spring(
@@ -388,14 +400,9 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
     )
     return this
         .scale(scale)
-        .pointerInput(onClick) {
-            detectTapGestures(
-                onPress = {
-                    pressed = true
-                    tryAwaitRelease()
-                    pressed = false
-                },
-                onTap = { onClick() }
-            )
-        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick
+        )
 }

@@ -65,6 +65,7 @@ private val YouthfulLightColorScheme = lightColorScheme(
  * **Dark mode**: deep blue-purple gradient background,
  * semi-transparent glass cards, white text hierarchy.
  */
+@androidx.compose.annotation.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun EasyTierTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

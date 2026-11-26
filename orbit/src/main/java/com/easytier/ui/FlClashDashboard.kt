@@ -2,7 +2,6 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -403,20 +402,17 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
             }
         }
     }
-    // 鸿蒙式按压：按下快速下陷，松开低阻尼 Q 弹回弹
-    val scale = remember { Animatable(1f) }
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            scale.animateTo(0.90f, tween(70, easing = HarmonyEasing))
-        } else {
-            scale.animateTo(
-                1f,
-                spring(dampingRatio = 0.38f, stiffness = Spring.StiffnessMedium)
-            )
-        }
-    }
+    // 按下缩小，松开回弹一下
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "pressScale"
+    )
     return this
-        .scale(scale.value)
+        .scale(scale)
         .clickable(
             interactionSource = interactionSource,
             indication = null,

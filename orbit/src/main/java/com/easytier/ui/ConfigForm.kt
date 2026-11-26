@@ -49,6 +49,51 @@ fun ConfigForm(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // ── DNS Push (prominent) ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .flGlassCard(colors, 20.dp)
+                .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                .padding(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🛡", fontSize = 16.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        T("DNS 下发", "DNS Push", langZh),
+                        color = colors.textPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        T("连接时注入 TUN", "Injected on connect", langZh),
+                        color = colors.textTertiary,
+                        fontSize = 11.sp
+                    )
+                }
+                Text(
+                    T(
+                        "填写 DNS 地址（如 10.144.144.1 启用 AdGuard 去广告），留空则使用系统 DNS",
+                        "Set a DNS (e.g. 10.144.144.1 for AdGuard). Empty = system DNS",
+                        langZh
+                    ),
+                    color = colors.textSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+                HmTextField(
+                    value = config.dnsServer,
+                    onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
+                    label = T("DNS 服务器", "DNS Server", langZh),
+                    placeholder = "10.144.144.1",
+                    colors = colors
+                )
+            }
+        }
+
         // ── Basic Config ──
         Box(
             modifier = Modifier
@@ -376,14 +421,6 @@ fun ConfigForm(
                             onValueChange = { onConfigChange(config.copy(portForward = it)) },
                             label = T("端口转发", "Port Forward", langZh),
                             placeholder = "udp://0.0.0.0:12345/10.126.126.1:23456",
-                            colors = colors
-                        )
-
-                        HmTextField(
-                            value = config.dnsServer,
-                            onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
-                            label = T("DNS 服务器", "DNS Server", langZh),
-                            placeholder = T("留空=系统 DNS", "Empty=System DNS", langZh),
                             colors = colors
                         )
 

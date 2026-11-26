@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.easytier.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,6 +43,15 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
+
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.core.content.FileProvider
+import java.io.File
 
 private enum class Tab { STATUS, CONFIG, LOGS, MORE }
 
@@ -117,6 +128,8 @@ fun MainScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (showAboutPage) 0.dp else 72.dp)
         ) {
             if (showAboutPage) {
+                // System back → leave the About page (back to "More"), not exit the app.
+                BackHandler { showAboutPage = false }
                 AboutPage(
                     langZh = langZh,
                     isConnected = connectionState.status == ConnectionStatus.RUNNING
@@ -727,6 +740,12 @@ private fun MoreTab(
     val colors = currentColors()
     val scrollState = rememberScrollState()
 
+    // ── Update check state ──
+    var checking by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateDialogVisible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     // Live uptime ticker
     var uptimeText by remember { mutableStateOf("") }
     LaunchedEffect(isConnected, connectionStartTime) {
@@ -916,6 +935,63 @@ private fun MoreTab(
             }
         }
 
+        // Check Update card (clickable → dialog with download options)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .clickable(enabled = !checking) {
+                    checking = true
+                    scope.launch {
+                        try {
+                            val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                            if (isNewerVersion(info.tag, version)) {
+                                updateInfo = info
+                                updateDialogVisible = true
+                            } else {
+                                Toast.makeText(
+                                    ctx,
+                                    T("已是最新版本 v$version", "Already up to date (v$version)", langZh),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                ctx,
+                                T(
+                                    "检查更新失败：${e.message ?: "unknown"}",
+                                    "Update check failed: ${e.message ?: "unknown"}",
+                                    langZh
+                                ),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } finally {
+                            checking = false
+                        }
+                    }
+                }
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (checking) "⋯" else "⟳", fontSize = 20.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        T("检查更新", "Check Update", langZh),
+                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        if (checking) T("正在检查…", "Checking…", langZh)
+                        else T("从 GitHub 获取最新版本", "Fetch the latest release from GitHub", langZh),
+                        color = colors.textTertiary, fontSize = 12.sp
+                    )
+                }
+                Text("→", color = colors.textTertiary, fontSize = 14.sp)
+            }
+        }
+
         // About Card (clickable → navigates to AboutPage)
         Box(
             modifier = Modifier
@@ -945,6 +1021,42 @@ private fun MoreTab(
 
         Spacer(Modifier.height(8.dp))
     }
+
+    // Update dialog (outside the scroll column so it overlays the whole tab)
+    UpdateDialog(
+        visible = updateDialogVisible,
+        info = updateInfo,
+        currentVersion = version,
+        langZh = langZh,
+        onDownloadApk = {
+            val info = updateInfo
+            val apkUrl = info?.apkUrl
+            if (info == null || apkUrl.isNullOrBlank()) {
+                Toast.makeText(
+                    ctx,
+                    T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
+            }
+        },
+        onOpenBrowser = {
+            val url = updateInfo?.htmlUrl
+            if (!url.isNullOrBlank()) {
+                try {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        ctx,
+                        T("无法打开浏览器", "Cannot open browser", langZh),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        },
+        onDismiss = { updateDialogVisible = false }
+    )
 }
 
 // ═══════════════════════════════════════════════════
@@ -1348,3 +1460,334 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
         )
     }
 }
+
+// ═══════════════════════════════════════════════════
+//  Update check — API, version compare, download
+// ═══════════════════════════════════════════════════
+
+private const val UPDATE_API =
+    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
+
+data class UpdateInfo(
+    val tag: String,
+    val body: String,
+    val htmlUrl: String,
+    val apkUrl: String?
+)
+
+/** Blocking GET of the latest release. Always call from Dispatchers.IO. */
+private fun fetchLatestRelease(): UpdateInfo {
+    val conn = URL(UPDATE_API).openConnection() as HttpURLConnection
+    conn.requestMethod = "GET"
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.setRequestProperty("User-Agent", "Orbit-Android")
+    conn.connectTimeout = 10_000
+    conn.readTimeout = 10_000
+    try {
+        val code = conn.responseCode
+        if (code != HttpURLConnection.HTTP_OK) throw IllegalStateException("HTTP $code")
+        val text = conn.inputStream.bufferedReader().use { it.readText() }
+        val root = JSONObject(text)
+        var apkUrl: String? = null
+        val assets = root.optJSONArray("assets")
+        if (assets != null) {
+            for (i in 0 until assets.length()) {
+                val asset = assets.optJSONObject(i) ?: continue
+                if (asset.optString("name", "").endsWith(".apk", ignoreCase = true)) {
+                    val url = asset.optString("browser_download_url", "")
+                    if (url.isNotEmpty()) {
+                        apkUrl = url
+                        break
+                    }
+                }
+            }
+        }
+        return UpdateInfo(
+            tag = root.optString("tag_name", "").trim(),
+            body = if (root.isNull("body")) "" else root.optString("body", ""),
+            htmlUrl = root.optString("html_url", ""),
+            apkUrl = apkUrl
+        )
+    } finally {
+        conn.disconnect()
+    }
+}
+
+/** "v0.1.8" / "0.1.8-beta" → [0, 1, 8]; non-numeric segments are skipped. */
+private fun versionParts(v: String): List<Int> =
+    v.trim().removePrefix("v").removePrefix("V")
+        .split('.', '-', '+', '_', ' ')
+        .mapNotNull { seg ->
+            val digits = seg.takeWhile { it.isDigit() }
+            if (digits.isEmpty()) null else digits.toIntOrNull()
+        }
+
+/** Numeric segment-wise comparison; true only when [latest] is strictly newer. */
+private fun isNewerVersion(latest: String, current: String): Boolean {
+    val a = versionParts(latest)
+    val b = versionParts(current)
+    if (a.isEmpty() || b.isEmpty()) return latest.trim() != current.trim()
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }
+        val y = b.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return false
+}
+
+/** Download the APK via the system DownloadManager, then offer to install it. */
+private fun startApkDownload(
+    ctx: Context,
+    apkUrl: String,
+    tag: String,
+    scope: kotlinx.coroutines.CoroutineScope,
+    langZh: Boolean
+) {
+    val fileName = run {
+        val fromUrl = apkUrl.substringAfterLast('/').substringBefore('?')
+        val base = if (fromUrl.endsWith(".apk", ignoreCase = true)) fromUrl
+        else "Orbit-${tag.trim().removePrefix("v")}.apk"
+        base.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    }
+    val dir = ctx.getExternalFilesDir(null) ?: ctx.filesDir
+    val file = File(dir, fileName)
+    // A leftover file from a previous attempt makes DownloadManager fail.
+    if (file.exists()) file.delete()
+
+    val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+    if (dm == null) {
+        Toast.makeText(
+            ctx,
+            T("系统下载服务不可用", "System download service unavailable", langZh),
+            Toast.LENGTH_LONG
+        ).show()
+        return
+    }
+
+    val request = DownloadManager.Request(Uri.parse(apkUrl))
+        .setTitle("Orbit $tag")
+        .setDescription(T("正在下载更新…", "Downloading update…", langZh))
+        .setMimeType("application/vnd.android.package-archive")
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalFilesDir(ctx, null, fileName)
+        .setAllowedOverMetered(true)
+        .setAllowedOverRoaming(true)
+
+    val id = try {
+        dm.enqueue(request)
+    } catch (e: Exception) {
+        Toast.makeText(
+            ctx,
+            T("下载失败：${e.message}", "Download failed: ${e.message}", langZh),
+            Toast.LENGTH_LONG
+        ).show()
+        return
+    }
+    Toast.makeText(ctx, T("开始下载…", "Downloading…", langZh), Toast.LENGTH_SHORT).show()
+
+    // Poll DownloadManager instead of relying on a broadcast receiver: the
+    // receiver would have to be manifest-registered and its delivery is not
+    // guaranteed on API 26+ for implicit broadcasts.
+    scope.launch {
+        var done = false
+        var failure: String? = null
+        for (i in 0 until 1200) {                       // ≈10 min at 500 ms
+            delay(500)
+            val cursor = try {
+                dm.query(DownloadManager.Query().setFilterById(id))
+            } catch (e: Exception) {
+                null
+            }
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
+                            DownloadManager.STATUS_SUCCESSFUL -> done = true
+                            DownloadManager.STATUS_FAILED -> failure =
+                                "reason=${cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))}"
+                        }
+                    }
+                } finally {
+                    cursor.close()
+                }
+            }
+            if (done || failure != null) break
+        }
+        if (done) {
+            Toast.makeText(
+                ctx,
+                T("已下载：${file.absolutePath}", "Downloaded: ${file.absolutePath}", langZh),
+                Toast.LENGTH_LONG
+            ).show()
+            installApk(ctx, file, langZh)
+        } else if (failure != null) {
+            Toast.makeText(
+                ctx,
+                T("下载失败（$failure）", "Download failed ($failure)", langZh),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+}
+
+/** Fire the system package installer for an already-downloaded APK. */
+private fun installApk(ctx: Context, file: File, langZh: Boolean) {
+    if (!file.exists()) return
+    try {
+        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        ctx.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(
+            ctx,
+            T(
+                "无法启动安装器，请手动安装：${file.absolutePath}",
+                "Cannot launch installer, install manually: ${file.absolutePath}",
+                langZh
+            ),
+            Toast.LENGTH_LONG
+        ).show()
+    }
+}
+
+/** Update dialog: release notes + "download APK" / "open in browser" / "close". */
+@Composable
+private fun UpdateDialog(
+    visible: Boolean,
+    info: UpdateInfo?,
+    currentVersion: String,
+    langZh: Boolean,
+    onDownloadApk: () -> Unit,
+    onOpenBrowser: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = currentColors()
+
+    // Keep the Dialog mounted until the exit animation finishes.
+    var mounted by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            mounted = true
+        } else if (mounted) {
+            delay(320)
+            mounted = false
+        }
+    }
+    if (!mounted || info == null) return
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
+            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
+                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .flGlassCard(colors, 20.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = T("发现新版本 ${info.tag}", "New version ${info.tag}", langZh),
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = T("当前版本 v$currentVersion", "Current v$currentVersion", langZh),
+                    color = colors.textTertiary,
+                    fontSize = 11.sp
+                )
+
+                if (info.body.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.inputBg)
+                            .padding(10.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = info.body.trim(),
+                            color = colors.textSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                } else {
+                    Text(
+                        text = T("（该版本没有更新说明）", "(No release notes for this version)", langZh),
+                        color = colors.textTertiary,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.accentGradient)
+                            .clickable { onDownloadApk() }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = T("直接下载", "Download APK", langZh),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.inputBg)
+                            .border(0.5.dp, colors.inputBorder, RoundedCornerShape(10.dp))
+                            .clickable { onOpenBrowser() }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = T("浏览器下载", "Open in Browser", langZh),
+                            color = colors.textSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onDismiss() }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = T("关闭", "Close", langZh),
+                        color = colors.textTertiary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+    }
+}
+

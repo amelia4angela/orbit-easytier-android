@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths exposed through ${applicationId}.fileprovider (used to hand a
+     downloaded APK to the system package installer). -->
+<paths>
+    <external-files-path
+        name="orbit_external_files"
+        path="." />
+    <files-path
+        name="orbit_internal_files"
+        path="." />
+</paths>

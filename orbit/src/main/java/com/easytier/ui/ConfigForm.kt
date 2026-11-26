@@ -2,7 +2,6 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -49,51 +47,6 @@ fun ConfigForm(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ── DNS Push (prominent) ──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .flGlassCard(colors, 20.dp)
-                .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
-                .padding(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🛡", fontSize = 16.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        T("DNS 下发", "DNS Push", langZh),
-                        color = colors.textPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        T("连接时注入 TUN", "Injected on connect", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 11.sp
-                    )
-                }
-                Text(
-                    T(
-                        "填写 DNS 地址（如 10.144.144.1 启用 AdGuard 去广告），留空则使用系统 DNS",
-                        "Set a DNS (e.g. 10.144.144.1 for AdGuard). Empty = system DNS",
-                        langZh
-                    ),
-                    color = colors.textSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-                HmTextField(
-                    value = config.dnsServer,
-                    onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
-                    label = T("DNS 服务器", "DNS Server", langZh),
-                    placeholder = "10.144.144.1",
-                    colors = colors
-                )
-            }
-        }
-
         // ── Basic Config ──
         Box(
             modifier = Modifier
@@ -280,24 +233,60 @@ fun ConfigForm(
                     colors = colors
                 )
 
-                // Common toggles
+                // DHCP toggle (No TUN moved to Advanced Options)
                 Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HmCheckbox(
-                        checked = config.noTun,
-                        onCheckedChange = { onConfigChange(config.copy(noTun = it)) },
-                        label = T("无 TUN 模式", "No TUN Mode", langZh),
-                        modifier = Modifier.weight(1f),
-                        colors = colors
+                HmToggle(
+                    checked = config.dhcp,
+                    onCheckedChange = { onConfigChange(config.copy(dhcp = it)) },
+                    label = T("DHCP 自动 IP", "DHCP Auto IP", langZh),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = colors
+                )
+            }
+        }
+
+        // ── DNS Push (own card, right after Basic Config) ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .flGlassCard(colors, 20.dp)
+                .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                .padding(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🛡", fontSize = 16.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        T("DNS 下发", "DNS Push", langZh),
+                        color = colors.textPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
-                    HmCheckbox(
-                        checked = config.dhcp,
-                        onCheckedChange = { onConfigChange(config.copy(dhcp = it)) },
-                        label = T("DHCP 自动 IP", "DHCP Auto IP", langZh),
-                        modifier = Modifier.weight(1f),
-                        colors = colors
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        T("连接时注入 TUN", "Injected on connect", langZh),
+                        color = colors.textTertiary,
+                        fontSize = 11.sp
                     )
                 }
+                Text(
+                    T(
+                        "填写 DNS 地址（如 10.144.144.1 启用 AdGuard 去广告），留空则使用系统 DNS",
+                        "Set a DNS (e.g. 10.144.144.1 for AdGuard). Empty = system DNS",
+                        langZh
+                    ),
+                    color = colors.textSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+                HmTextField(
+                    value = config.dnsServer,
+                    onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
+                    label = T("DNS 服务器", "DNS Server", langZh),
+                    placeholder = "10.144.144.1",
+                    colors = colors
+                )
             }
         }
 
@@ -341,10 +330,19 @@ fun ConfigForm(
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // No TUN mode — moved here from Basic Config (first item)
+                        HmToggle(
+                            checked = config.noTun,
+                            onCheckedChange = { onConfigChange(config.copy(noTun = it)) },
+                            label = T("无 TUN 模式", "No TUN Mode", langZh),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = colors
+                        )
+
                         // Network
                         SectionLabel(T("网络", "Network", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.disableIpv6, onCheckedChange = { onConfigChange(config.copy(disableIpv6 = it)) }, label = T("禁用 IPv6", "Disable IPv6", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableIpv6, onCheckedChange = { onConfigChange(config.copy(disableIpv6 = it)) }, label = T("禁用 IPv6", "Disable IPv6", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
                         HmTextField(
                             value = config.bindDevice,
@@ -357,35 +355,35 @@ fun ConfigForm(
                         // P2P
                         SectionLabel(T("点对点 (P2P)", "Peer-to-Peer (P2P)", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.disableP2p, onCheckedChange = { onConfigChange(config.copy(disableP2p = it)) }, label = T("禁用 P2P", "Disable P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.p2pOnly, onCheckedChange = { onConfigChange(config.copy(p2pOnly = it)) }, label = T("仅 P2P", "P2P Only", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableP2p, onCheckedChange = { onConfigChange(config.copy(disableP2p = it)) }, label = T("禁用 P2P", "Disable P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.p2pOnly, onCheckedChange = { onConfigChange(config.copy(p2pOnly = it)) }, label = T("仅 P2P", "P2P Only", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.lazyP2p, onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) }, label = T("延迟 P2P", "Lazy P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.needP2p, onCheckedChange = { onConfigChange(config.copy(needP2p = it)) }, label = T("需要 P2P", "Need P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.lazyP2p, onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) }, label = T("延迟 P2P", "Lazy P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.needP2p, onCheckedChange = { onConfigChange(config.copy(needP2p = it)) }, label = T("需要 P2P", "Need P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
 
                         // NAT / Hole Punch
                         SectionLabel(T("NAT / 打洞", "NAT / Hole Punch", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.disableTcpHp, onCheckedChange = { onConfigChange(config.copy(disableTcpHp = it)) }, label = T("禁用 TCP 打洞", "Disable TCP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.disableUdpHp, onCheckedChange = { onConfigChange(config.copy(disableUdpHp = it)) }, label = T("禁用 UDP 打洞", "Disable UDP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableTcpHp, onCheckedChange = { onConfigChange(config.copy(disableTcpHp = it)) }, label = T("禁用 TCP 打洞", "Disable TCP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableUdpHp, onCheckedChange = { onConfigChange(config.copy(disableUdpHp = it)) }, label = T("禁用 UDP 打洞", "Disable UDP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
-                        HmCheckbox(checked = config.disableSymHp, onCheckedChange = { onConfigChange(config.copy(disableSymHp = it)) }, label = T("禁用 Sym 打洞", "Disable Sym HP", langZh), colors = colors)
+                        HmToggle(checked = config.disableSymHp, onCheckedChange = { onConfigChange(config.copy(disableSymHp = it)) }, label = T("禁用 Sym 打洞", "Disable Sym HP", langZh), colors = colors)
 
                         // Proxy / KCP / QUIC
                         SectionLabel(T("代理 / KCP / QUIC", "Proxy / KCP / QUIC", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.enableKcpProxy, onCheckedChange = { onConfigChange(config.copy(enableKcpProxy = it)) }, label = "KCP Proxy", modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.disableKcpInput, onCheckedChange = { onConfigChange(config.copy(disableKcpInput = it)) }, label = T("禁用 KCP 入站", "Disable KCP In", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.enableKcpProxy, onCheckedChange = { onConfigChange(config.copy(enableKcpProxy = it)) }, label = "KCP Proxy", modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableKcpInput, onCheckedChange = { onConfigChange(config.copy(disableKcpInput = it)) }, label = T("禁用 KCP 入站", "Disable KCP In", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.enableQuicProxy, onCheckedChange = { onConfigChange(config.copy(enableQuicProxy = it)) }, label = "QUIC Proxy", modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.disableQuicInput, onCheckedChange = { onConfigChange(config.copy(disableQuicInput = it)) }, label = T("禁用 QUIC 入站", "Disable QUIC In", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.enableQuicProxy, onCheckedChange = { onConfigChange(config.copy(enableQuicProxy = it)) }, label = "QUIC Proxy", modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableQuicInput, onCheckedChange = { onConfigChange(config.copy(disableQuicInput = it)) }, label = T("禁用 QUIC 入站", "Disable QUIC In", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
-                        HmCheckbox(checked = config.proxyForwardBySystem, onCheckedChange = { onConfigChange(config.copy(proxyForwardBySystem = it)) }, label = T("系统代理转发", "System Proxy", langZh), colors = colors)
-                        HmCheckbox(checked = config.relayAllRpc, onCheckedChange = { onConfigChange(config.copy(relayAllRpc = it)) }, label = T("中继所有节点 RPC", "Relay All RPC", langZh), colors = colors)
-                        HmCheckbox(checked = config.exitNode, onCheckedChange = { onConfigChange(config.copy(exitNode = it)) }, label = T("出口节点模式", "Exit Node", langZh), colors = colors)
+                        HmToggle(checked = config.proxyForwardBySystem, onCheckedChange = { onConfigChange(config.copy(proxyForwardBySystem = it)) }, label = T("系统代理转发", "System Proxy", langZh), colors = colors)
+                        HmToggle(checked = config.relayAllRpc, onCheckedChange = { onConfigChange(config.copy(relayAllRpc = it)) }, label = T("中继所有节点 RPC", "Relay All RPC", langZh), colors = colors)
+                        HmToggle(checked = config.exitNode, onCheckedChange = { onConfigChange(config.copy(exitNode = it)) }, label = T("出口节点模式", "Exit Node", langZh), colors = colors)
 
                         HmTextField(
                             value = config.proxyNetworks,
@@ -427,18 +425,18 @@ fun ConfigForm(
                         // Performance
                         SectionLabel(T("性能", "Performance", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.latencyFirst, onCheckedChange = { onConfigChange(config.copy(latencyFirst = it)) }, label = T("延迟优先", "Latency First", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.multiThread, onCheckedChange = { onConfigChange(config.copy(multiThread = it)) }, label = T("多线程", "Multi-Thread", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.latencyFirst, onCheckedChange = { onConfigChange(config.copy(latencyFirst = it)) }, label = T("延迟优先", "Latency First", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.multiThread, onCheckedChange = { onConfigChange(config.copy(multiThread = it)) }, label = T("多线程", "Multi-Thread", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
-                        HmCheckbox(checked = config.useSmoltcp, onCheckedChange = { onConfigChange(config.copy(useSmoltcp = it)) }, label = "smoltcp", colors = colors)
+                        HmToggle(checked = config.useSmoltcp, onCheckedChange = { onConfigChange(config.copy(useSmoltcp = it)) }, label = "smoltcp", colors = colors)
 
                         // Security
                         SectionLabel(T("安全", "Security", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmCheckbox(checked = config.disableEncrypt, onCheckedChange = { onConfigChange(config.copy(disableEncrypt = it)) }, label = T("禁用加密", "Disable Encrypt", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmCheckbox(checked = config.privateMode, onCheckedChange = { onConfigChange(config.copy(privateMode = it)) }, label = T("私密模式", "Private Mode", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.disableEncrypt, onCheckedChange = { onConfigChange(config.copy(disableEncrypt = it)) }, label = T("禁用加密", "Disable Encrypt", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(checked = config.privateMode, onCheckedChange = { onConfigChange(config.copy(privateMode = it)) }, label = T("私密模式", "Private Mode", langZh), modifier = Modifier.weight(1f), colors = colors)
                         }
-                        HmCheckbox(checked = config.acceptDns, onCheckedChange = { onConfigChange(config.copy(acceptDns = it)) }, label = T("接受 DNS", "Accept DNS", langZh), colors = colors)
+                        HmToggle(checked = config.acceptDns, onCheckedChange = { onConfigChange(config.copy(acceptDns = it)) }, label = T("接受 DNS", "Accept DNS", langZh), colors = colors)
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             HmTextField(
@@ -574,62 +572,34 @@ internal fun HmTextField(
 }
 
 /**
- * Modern checkbox with animated check mark, matching the accent-colored theme.
+ * Pill-style toggle button: selected = accent filled, unselected = grey button.
+ * Replaces the old checkbox so config options read as tappable chips.
  */
 @Composable
-private fun HmCheckbox(
+fun HmToggle(
+    label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    label: String,
     modifier: Modifier = Modifier,
-    colors: AppColors
+    colors: AppColors = currentColors()
 ) {
-    // Animate check state
-    val boxColor by animateColorAsState(
-        targetValue = if (checked) colors.accent else colors.inputBg,
-        animationSpec = tween(200),
-        label = "checkBoxColor"
-    )
-    val checkAlpha by animateFloatAsState(
-        targetValue = if (checked) 1f else 0f,
-        animationSpec = tween(200),
-        label = "checkAlpha"
-    )
-
-    Row(
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 5.dp, horizontal = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .clip(RoundedCornerShape(5.dp))
-                .background(boxColor)
-                .border(
-                    width = 1.dp,
-                    color = if (checked) colors.accent else colors.inputBorder,
-                    shape = RoundedCornerShape(5.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "✓",
-                color = ComposeColor.White
-                    .copy(alpha = checkAlpha),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.offset(y = (-1).dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (checked) colors.accentContainer else colors.inputBg)
+            .border(
+                0.5.dp,
+                if (checked) colors.accent.copy(alpha = 0.45f) else colors.inputBorder,
+                RoundedCornerShape(10.dp)
             )
-        }
-        Spacer(Modifier.width(8.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
         Text(
-            text = label,
-            color = colors.textSecondary,
-            fontSize = 13.sp
+            label,
+            color = if (checked) colors.accentLight else colors.textSecondary,
+            fontSize = 13.sp,
+            fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal
         )
     }
 }

@@ -3,6 +3,7 @@ package com.easytier.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -65,7 +66,6 @@ private val YouthfulLightColorScheme = lightColorScheme(
  * **Dark mode**: deep blue-purple gradient background,
  * semi-transparent glass cards, white text hierarchy.
  */
-@androidx.compose.annotation.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun EasyTierTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -74,7 +74,7 @@ fun EasyTierTheme(
 ) {
     val colorScheme = when {
         dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ->
-            androidx.compose.material3.dynamicColorScheme(androidx.compose.ui.platform.LocalContext.current)
+            dynamicColorScheme(androidx.compose.ui.platform.LocalContext.current)
         darkTheme -> DarkColorScheme
         else -> YouthfulLightColorScheme
     }

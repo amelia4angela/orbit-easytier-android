@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Subject
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,7 +35,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 
-private enum class Tab { STATUS, CONFIG, MORE }
+private enum class Tab { STATUS, CONFIG, LOGS, MORE }
 
 // ═══════════════════════════════════════════════════
 //  MainScreen — 3-tab layout with bottom navigation
@@ -149,6 +155,7 @@ fun MainScreen(
                             || connectionState.status == ConnectionStatus.NO_TUN,
                     connectionStartTime = connectionStartTime
                 )
+                Tab.LOGS -> LogsTab(langZh = langZh)
             }
             }
         }
@@ -162,6 +169,79 @@ fun MainScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  Logs Tab — live scrolling log view
+// ═══════════════════════════════════════════════════
+
+@Composable
+private fun LogsTab(langZh: Boolean) {
+    val colors = currentColors()
+    var logs by remember { mutableStateOf(com.easytier.AppLogger.getLogs()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            logs = com.easytier.AppLogger.getLogs()
+            delay(2000L)
+        }
+    }
+    val scroll = rememberScrollState()
+    LaunchedEffect(logs) { scroll.animateScrollTo(scroll.maxValue) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(scroll),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                T("运行日志", "Runtime Logs", langZh),
+                color = colors.textPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(colors.statusGood)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(T("自动刷新", "Auto-refresh", langZh), color = colors.textTertiary, fontSize = 11.sp)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .padding(12.dp)
+        ) {
+            if (logs.isEmpty()) {
+                Text(
+                    T("暂无日志", "No logs yet", langZh),
+                    color = colors.textTertiary,
+                    fontSize = 13.sp
+                )
+            } else {
+                Text(
+                    text = logs,
+                    color = colors.textSecondary,
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
+        }
+        Spacer(Modifier.height(80.dp))
     }
 }
 
@@ -187,9 +267,10 @@ private fun BottomNavigationBar(
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf(
-                Triple("●", T("状态", "Status", langZh), Tab.STATUS),
-                Triple("≡", T("配置", "Config", langZh), Tab.CONFIG),
-                Triple("○", T("更多", "More", langZh), Tab.MORE)
+                Triple(Icons.Rounded.Dashboard, T("首页", "Home", langZh), Tab.STATUS),
+                Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
+                Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
+                Triple(Icons.Rounded.Build, T("更多", "More", langZh), Tab.MORE)
             ).forEach { (icon, label, tab) ->
                 val isActive = currentTab == tab
                 Box(
@@ -202,7 +283,12 @@ private fun BottomNavigationBar(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Text(icon, fontSize = 20.sp)
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = if (isActive) colors.accent else colors.textTertiary,
+                            modifier = Modifier.size(22.dp)
+                        )
                         Text(
                             text = label,
                             color = if (isActive) colors.textPrimary else colors.textTertiary,

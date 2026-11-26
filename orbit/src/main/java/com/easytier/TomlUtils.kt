@@ -427,7 +427,491 @@ object TomlUtils {
         return fromNetwork ?: fromInstance ?: "imported"
     }
 
+    /** Derive a config name from a parsed [ConfigState] (lenient import path). */
+    fun deriveNameFromState(s: ConfigState): String =
+        s.networkName.ifEmpty { s.instanceName }.ifEmpty { "imported" }
+
     /** Parse a TOML boolean value string. */
     fun parseBool(s: String): Boolean =
         s.trim().lowercase() in listOf("true", "yes", "1")
+
+    // ═══════════════════════════════════════════════
+    //  Lenient import — any text → ConfigState
+    // ═══════════════════════════════════════════════
+
+    const val DEFAULT_PEER_PORT = "11010"
+
+    private val PEER_PROTOCOLS = setOf("tcp", "udp", "ws", "wss", "quic", "grpc")
+
+    /** Any peer URI in free text, structure irrelevant. */
+    private val URI_REGEX =
+        Regex("(?i)\\b(?:tcp|udp|ws|wss|quic|grpc)://[^\\s\"'<>\\\\]+")
+
+    /** `key = value`, `key: value`, `key="value"` — key may use -, ., or nothing. */
+    private val KV_REGEX = Regex(
+        "([A-Za-z_][A-Za-z0-9_.\\-]*)\\s*[:=]\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s,;]+)"
+    )
+
+    /** `--key value` CLI style (EasyTier command line pasted into a file). */
+    private val CLI_REGEX = Regex(
+        "--([A-Za-z_][A-Za-z0-9_.\\-]*)[ \\t]+(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s]+)"
+    )
+
+    private val IPV4_REGEX = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
+    private val IPV6_LOOSE_REGEX = Regex("^[0-9a-fA-F:]+$")
+
+    /** Boolean-ish config keys (normalized) → ConfigState slot name. */
+    private val BOOL_KEYS = mapOf(
+        "dhcp" to "dhcp",
+        "no_tun" to "noTun",
+        "notun" to "noTun",
+        "disable_ipv6" to "disableIpv6",
+        "disable_p2p" to "disableP2p",
+        "p2p_only" to "p2pOnly",
+        "lazy_p2p" to "lazyP2p",
+        "need_p2p" to "needP2p",
+        "disable_tcp_hole_punching" to "disableTcpHp",
+        "disable_udp_hole_punching" to "disableUdpHp",
+        "disable_sym_hole_punching" to "disableSymHp",
+        "enable_kcp_proxy" to "enableKcpProxy",
+        "disable_kcp_input" to "disableKcpInput",
+        "enable_quic_proxy" to "enableQuicProxy",
+        "disable_quic_input" to "disableQuicInput",
+        "proxy_forward_by_system" to "proxyForwardBySystem",
+        "relay_all_peer_rpc" to "relayAllRpc",
+        "enable_exit_node" to "exitNode",
+        "latency_first" to "latencyFirst",
+        "multi_thread" to "multiThread",
+        "use_smoltcp" to "useSmoltcp",
+        "disable_encryption" to "disableEncrypt",
+        "private_mode" to "privateMode",
+        "accept_dns" to "acceptDns"
+    )
+
+    /**
+     * Import arbitrary text (TOML / JSON / mixed / commented / unordered).
+     *
+     * Never throws and never fails because a field is missing — only a document
+     * with zero recognizable content yields [ImportResult.recognized] == false.
+     */
+    fun parseLenient(text: String): ImportResult {
+        val warnings = mutableListOf<String>()
+        val raw = text.removePrefix("\uFEFF").trim()
+        if (raw.isEmpty()) {
+            return ImportResult(ConfigState(), 0, emptyList(), listOf("文件内容为空"))
+        }
+
+        // 1) Whole document parses as JSON → reuse the structured reader.
+        var base: ConfigState? = null
+        if (raw.startsWith("{") || raw.startsWith("[")) {
+            val obj = runCatching { JSONObject(raw) }.getOrNull()
+            if (obj != null) {
+                val st = jsonToConfigState(obj)
+                if (hasAnyValue(st)) base = st
+                else warnings.add("JSON 里没有已知字段，已改用宽松文本扫描")
+            } else {
+                warnings.add("JSON 解析失败，已改用宽松文本扫描")
+            }
+        }
+
+        // 2) Lenient scan always runs — it also fills gaps the JSON path left empty.
+        val scan = scanFreeText(raw, warnings)
+        val cfg = if (base != null) mergeStates(base, scan.state) else scan.state
+
+        // "unrecognized lines" only matters when we had to read the text as text.
+        if (base == null && scan.unknownLines > 0)
+            warnings.add("有 ${scan.unknownLines} 行内容未识别，已忽略")
+        if (cfg.nodes.isEmpty()) warnings.add("没有找到服务器节点")
+
+        return ImportResult(cfg, cfg.nodes.size, describeFields(cfg), warnings)
+    }
+
+    private class ScanOut(val state: ConfigState, val unknownLines: Int)
+
+    private fun scanFreeText(text: String, warnings: MutableList<String>): ScanOut {
+        var cfg = ConfigState()
+        val nodes = mutableListOf<PeerNode>()
+        val peerValues = mutableListOf<String>()
+        var lastPort = ""
+        var unknownLines = 0
+
+        // Peers first: every URI in the whole text counts, structure ignored.
+        for (m in URI_REGEX.findAll(text)) {
+            val node = nodeFromUri(m.value, warnings) ?: continue
+            addNode(nodes, node)
+        }
+
+        for (rawLine in text.lines()) {
+            val line = stripInlineComment(rawLine).trim()
+            if (line.isEmpty() || line.startsWith("//")) continue
+            if (line.startsWith("[") && line.endsWith("]")) continue   // [section] / [[peer]]
+            if (line == "{" || line == "}" || line == "[" || line == "]") continue
+
+            val pairs = keyValues(line)
+            if (pairs.isEmpty()) {
+                if (!URI_REGEX.containsMatchIn(line)) unknownLines++
+                continue
+            }
+
+            var consumed = false
+            for ((rawKey, rawValue) in pairs) {
+                val key = normalizeKey(rawKey)
+                val value = cleanValue(rawValue)
+                if (value.isEmpty()) continue
+                when (key) {
+                    "network_name", "networkname", "net_name" -> {
+                        cfg = cfg.copy(networkName = value); consumed = true
+                    }
+                    "network_secret", "networksecret", "secret", "password", "passwd", "network_key" -> {
+                        cfg = cfg.copy(secret = value); consumed = true
+                    }
+                    "ipv4", "ip", "ip_address", "ip_addr", "ipv4_addr", "tun_ip" -> {
+                        cfg = applyIp(cfg, value, warnings); consumed = true
+                    }
+                    "ip_prefix", "ipv4_prefix", "prefix", "netmask", "cidr", "subnet" -> {
+                        cfg = cfg.copy(ipPrefix = value.trimStart('/')); consumed = true
+                    }
+                    "instance_name", "instancename", "instance" -> {
+                        cfg = cfg.copy(instanceName = value); consumed = true
+                    }
+                    "hostname", "host_name" -> {
+                        cfg = cfg.copy(hostname = value); consumed = true
+                    }
+                    "port", "peer_port", "server_port" -> {
+                        val digits = value.filter { it.isDigit() }
+                        if (digits.isNotEmpty()) lastPort = digits
+                        else warnings.add("端口无法解析: $value")
+                        consumed = true
+                    }
+                    "server", "host", "peer", "peers", "peer_uri", "uri", "uris",
+                    "addr", "address", "server_addr", "server_address", "remote" -> {
+                        peerValues.add(value); consumed = true
+                    }
+                    "mtu" -> {
+                        cfg = cfg.copy(mtu = value.filter { it.isDigit() }); consumed = true
+                    }
+                    "bind_device" -> {
+                        cfg = cfg.copy(bindDevice = value); consumed = true
+                    }
+                    "socks5", "socks5_proxy" -> {
+                        cfg = cfg.copy(socks5 = value); consumed = true
+                    }
+                    "encryption_algorithm", "encrypt_algo", "encrypt", "cipher" -> {
+                        cfg = cfg.copy(encryptAlgo = value); consumed = true
+                    }
+                    "compression", "compress" -> {
+                        cfg = cfg.copy(compression = value); consumed = true
+                    }
+                    "dns", "dns_server", "dns_servers", "dns_server_list" -> {
+                        cfg = cfg.copy(dnsServer = value); consumed = true
+                    }
+                    "proxy_network", "proxy_networks", "proxy_network_cidr" -> {
+                        cfg = cfg.copy(proxyNetworks = appendCsv(cfg.proxyNetworks, value)); consumed = true
+                    }
+                    "exit_nodes", "exit_node", "exit_node_vip" -> {
+                        cfg = cfg.copy(exitNodes = appendCsv(cfg.exitNodes, value)); consumed = true
+                    }
+                    else -> {
+                        val slot = BOOL_KEYS[key]
+                        if (slot != null) {
+                            consumed = true
+                            val b = lenientBool(value)
+                            if (b == null) warnings.add("「$rawKey」的布尔值无法解析: $value")
+                            else cfg = setBool(cfg, slot, b)
+                        }
+                    }
+                }
+            }
+            if (!consumed && !URI_REGEX.containsMatchIn(line)) unknownLines++
+        }
+
+        // Fallback: no URI anywhere → build nodes from server/host (+port) values.
+        if (nodes.isEmpty()) {
+            for (v in peerValues) {
+                for (n in nodesFromValue(v, lastPort, warnings)) addNode(nodes, n)
+            }
+        }
+
+        if (nodes.isNotEmpty()) {
+            cfg = cfg.copy(
+                server = cfg.server.ifEmpty { nodes.first().address },
+                port = cfg.port.ifEmpty { nodes.first().port },
+                nodes = nodes,
+                extraServers = nodes.drop(1).map {
+                    "${it.protocol}://${formatHost(it.address)}:${it.port}"
+                }
+            )
+        }
+        return ScanOut(cfg, unknownLines)
+    }
+
+    private fun addNode(list: MutableList<PeerNode>, n: PeerNode) {
+        if (list.none { it.protocol == n.protocol && it.address == n.address && it.port == n.port })
+            list.add(n)
+    }
+
+    /** Lenient URI → PeerNode: tolerates missing port (defaults), keeps v6 brackets. */
+    private fun nodeFromUri(token: String, warnings: MutableList<String>): PeerNode? {
+        val clean = token.trim()
+            .substringBefore('#')
+            .trim()
+            .trimEnd('/', ',', ';', ')', '，', '；', '。')
+        val sep = clean.indexOf("://")
+        if (sep <= 0) return null
+        val protocol = clean.substring(0, sep).lowercase()
+        if (protocol !in PEER_PROTOCOLS) return null
+        var rest = clean.substring(sep + 3)
+        rest = rest.substringBefore('/').substringBefore('?')
+        if (rest.isEmpty()) return null
+
+        var host: String
+        var port: String
+        if (rest.startsWith("[")) {
+            val close = rest.indexOf(']')
+            if (close <= 1) {
+                warnings.add("IPv6 节点地址不完整: $clean")
+                return null
+            }
+            host = rest.substring(0, close + 1)
+            val tail = rest.substring(close + 1)
+            port = if (tail.startsWith(":")) tail.substring(1) else ""
+        } else {
+            when (rest.count { it == ':' }) {
+                0 -> { host = rest; port = "" }
+                1 -> { host = rest.substringBefore(':'); port = rest.substringAfter(':') }
+                else -> {   // bare IPv6, no brackets
+                    host = rest; port = ""
+                    warnings.add("IPv6 地址未加方括号: $clean")
+                }
+            }
+        }
+        if (host.isEmpty()) return null
+        if (port.isEmpty()) {
+            port = DEFAULT_PEER_PORT
+            warnings.add("节点 $host 缺少端口，已按 $DEFAULT_PEER_PORT 处理")
+        } else if (port.any { !it.isDigit() }) {
+            warnings.add("节点端口可疑: $clean")
+        }
+        return PeerNode(protocol, host, port)
+    }
+
+    /** Build nodes from a server/host value that may itself be a URI, host:port or bare host. */
+    private fun nodesFromValue(
+        value: String,
+        fallbackPort: String,
+        warnings: MutableList<String>
+    ): List<PeerNode> {
+        val out = mutableListOf<PeerNode>()
+        for (rawPart in value.split(Regex("[\\s,]+"))) {
+            val part = rawPart.trim().trim(',', ';')
+            if (part.isEmpty()) continue
+            if (part.contains("://")) {
+                nodeFromUri(part, warnings)?.let { out.add(it) }
+                continue
+            }
+            var host = part
+            var port = fallbackPort
+            if (part.count { it == ':' } == 1) {
+                val tail = part.substringAfter(':')
+                if (tail.isNotEmpty() && tail.all { it.isDigit() }) {
+                    host = part.substringBefore(':')
+                    port = tail
+                }
+            }
+            if (host.isEmpty()) continue
+            if (port.isEmpty()) {
+                port = DEFAULT_PEER_PORT
+                warnings.add("服务器 $host 缺少端口，已按 $DEFAULT_PEER_PORT 处理")
+            }
+            out.add(PeerNode("tcp", host, port))
+        }
+        return out
+    }
+
+    /** Cut an inline `# comment` while respecting quoted strings. */
+    private fun stripInlineComment(line: String): String {
+        var quote: Char? = null
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            when {
+                quote != null -> if (c == quote) quote = null
+                c == '"' || c == '\'' -> quote = c
+                c == '#' -> return line.substring(0, i)
+            }
+            i++
+        }
+        return line
+    }
+
+    /** All key/value pairs on one line (TOML-ish `k = v`, YAML-ish `k: v`, `--k v`). */
+    private fun keyValues(line: String): List<Pair<String, String>> {
+        val hits = mutableListOf<Pair<Int, Pair<String, String>>>()
+        for (m in KV_REGEX.findAll(line)) {
+            hits.add(m.range.first to (m.groupValues[1] to m.groupValues[2]))
+        }
+        if (line.contains("--")) {
+            for (m in CLI_REGEX.findAll(line)) {
+                hits.add(m.range.first to (m.groupValues[1] to m.groupValues[2]))
+            }
+        }
+        return hits.sortedBy { it.first }.distinctBy { it.first }.map { it.second }
+    }
+
+    /** Lowercase, unify separators: `Network-Name` → `network_name`. */
+    private fun normalizeKey(raw: String): String =
+        raw.trim().lowercase().replace('-', '_').replace('.', '_').trim('_')
+
+    /** Strip quotes / inline comment / trailing punctuation from a raw value. */
+    private fun cleanValue(raw: String): String {
+        var v = raw.trim()
+        if (v.isEmpty()) return v
+        val q = v.first()
+        if (q == '"' || q == '\'') {
+            val end = v.indexOf(q, 1)
+            if (end > 1) v = v.substring(1, end)
+            return v.trim()
+        }
+        val hash = v.indexOf('#')
+        if (hash >= 0) v = v.substring(0, hash)
+        return v.trim().trimEnd(',', ';')
+    }
+
+    private fun applyIp(cfg: ConfigState, rawValue: String, warnings: MutableList<String>): ConfigState {
+        val v = rawValue.trim()
+        val ip = v.substringBefore('/').trim()
+        val prefix = if (v.contains('/')) v.substringAfter('/').trim().filter { it.isDigit() } else ""
+        if (!looksLikeIp(ip)) warnings.add("IP 字段格式可疑: $v")
+        return cfg.copy(ipAddress = ip, ipPrefix = prefix.ifEmpty { cfg.ipPrefix })
+    }
+
+    private fun looksLikeIp(s: String): Boolean =
+        IPV4_REGEX.matches(s) || (s.contains(':') && IPV6_LOOSE_REGEX.matches(s))
+
+    private fun appendCsv(existing: String, v: String): String =
+        if (existing.isBlank()) v else "$existing,$v"
+
+    /** true/false/1/0/yes/no/on/off/是/否 … null when unparseable. */
+    private fun lenientBool(v: String): Boolean? =
+        when (v.trim().lowercase()) {
+            "true", "1", "yes", "on", "enable", "enabled", "是", "开" -> true
+            "false", "0", "no", "off", "disable", "disabled", "否", "关" -> false
+            else -> null
+        }
+
+    private fun setBool(c: ConfigState, slot: String, b: Boolean): ConfigState = when (slot) {
+        "dhcp" -> c.copy(dhcp = b)
+        "noTun" -> c.copy(noTun = b)
+        "disableIpv6" -> c.copy(disableIpv6 = b)
+        "disableP2p" -> c.copy(disableP2p = b)
+        "p2pOnly" -> c.copy(p2pOnly = b)
+        "lazyP2p" -> c.copy(lazyP2p = b)
+        "needP2p" -> c.copy(needP2p = b)
+        "disableTcpHp" -> c.copy(disableTcpHp = b)
+        "disableUdpHp" -> c.copy(disableUdpHp = b)
+        "disableSymHp" -> c.copy(disableSymHp = b)
+        "enableKcpProxy" -> c.copy(enableKcpProxy = b)
+        "disableKcpInput" -> c.copy(disableKcpInput = b)
+        "enableQuicProxy" -> c.copy(enableQuicProxy = b)
+        "disableQuicInput" -> c.copy(disableQuicInput = b)
+        "proxyForwardBySystem" -> c.copy(proxyForwardBySystem = b)
+        "relayAllRpc" -> c.copy(relayAllRpc = b)
+        "exitNode" -> c.copy(exitNode = b)
+        "latencyFirst" -> c.copy(latencyFirst = b)
+        "multiThread" -> c.copy(multiThread = b)
+        "useSmoltcp" -> c.copy(useSmoltcp = b)
+        "disableEncrypt" -> c.copy(disableEncrypt = b)
+        "privateMode" -> c.copy(privateMode = b)
+        "acceptDns" -> c.copy(acceptDns = b)
+        else -> c
+    }
+
+    /** Did the structured JSON path actually read anything? */
+    private fun hasAnyValue(s: ConfigState): Boolean =
+        s.copy(ipPrefix = "24") != ConfigState(ipPrefix = "24")
+
+    /** JSON state wins; the scan only fills what JSON left empty. */
+    private fun mergeStates(json: ConfigState, scan: ConfigState): ConfigState = json.copy(
+        networkName = json.networkName.ifEmpty { scan.networkName },
+        secret = json.secret.ifEmpty { scan.secret },
+        server = json.server.ifEmpty { scan.server },
+        port = json.port.ifEmpty { scan.port },
+        ipAddress = json.ipAddress.ifEmpty { scan.ipAddress },
+        ipPrefix = if (json.ipPrefix.isEmpty() || json.ipPrefix == "24") scan.ipPrefix.ifEmpty { json.ipPrefix } else json.ipPrefix,
+        instanceName = json.instanceName.ifEmpty { scan.instanceName },
+        hostname = json.hostname.ifEmpty { scan.hostname },
+        bindDevice = json.bindDevice.ifEmpty { scan.bindDevice },
+        mtu = json.mtu.ifEmpty { scan.mtu },
+        socks5 = json.socks5.ifEmpty { scan.socks5 },
+        portForward = json.portForward.ifEmpty { scan.portForward },
+        encryptAlgo = json.encryptAlgo.ifEmpty { scan.encryptAlgo },
+        compression = json.compression.ifEmpty { scan.compression },
+        proxyNetworks = json.proxyNetworks.ifEmpty { scan.proxyNetworks },
+        exitNodes = json.exitNodes.ifEmpty { scan.exitNodes },
+        dnsServer = json.dnsServer.ifEmpty { scan.dnsServer },
+        extraServers = if (json.extraServers.isNotEmpty()) json.extraServers else scan.extraServers,
+        nodes = if (json.nodes.isNotEmpty()) {
+            (json.nodes + scan.nodes).distinctBy { "${it.protocol}|${it.address}|${it.port}" }
+        } else scan.nodes
+    )
+
+    /** Chinese labels for every field that ended up with a non-default value. */
+    private fun describeFields(s: ConfigState): List<String> {
+        val out = mutableListOf<String>()
+        if (s.nodes.isNotEmpty()) out.add("服务器节点")
+        if (s.networkName.isNotEmpty()) out.add("网络名称")
+        if (s.secret.isNotEmpty()) out.add("密钥")
+        if (s.ipAddress.isNotEmpty()) out.add("本机 IP")
+        if (s.ipPrefix.isNotEmpty() && s.ipPrefix != "24") out.add("子网前缀")
+        if (s.instanceName.isNotEmpty()) out.add("实例名")
+        if (s.hostname.isNotEmpty()) out.add("主机名")
+        if (s.dhcp) out.add("DHCP")
+        if (s.disableIpv6) out.add("禁用 IPv6")
+        if (s.noTun) out.add("无 TUN")
+        if (s.bindDevice.isNotEmpty()) out.add("绑定网卡")
+        if (s.mtu.isNotEmpty()) out.add("MTU")
+        if (s.disableP2p) out.add("禁用 P2P")
+        if (s.p2pOnly) out.add("仅 P2P")
+        if (s.lazyP2p) out.add("延迟 P2P")
+        if (s.needP2p) out.add("需要 P2P")
+        if (s.disableTcpHp) out.add("禁用 TCP 打洞")
+        if (s.disableUdpHp) out.add("禁用 UDP 打洞")
+        if (s.disableSymHp) out.add("禁用 Sym 打洞")
+        if (s.enableKcpProxy) out.add("KCP Proxy")
+        if (s.disableKcpInput) out.add("禁用 KCP 入站")
+        if (s.enableQuicProxy) out.add("QUIC Proxy")
+        if (s.disableQuicInput) out.add("禁用 QUIC 入站")
+        if (s.proxyForwardBySystem) out.add("系统代理转发")
+        if (s.relayAllRpc) out.add("中继所有 RPC")
+        if (s.exitNode) out.add("出口节点")
+        if (s.latencyFirst) out.add("延迟优先")
+        if (s.multiThread) out.add("多线程")
+        if (s.useSmoltcp) out.add("smoltcp")
+        if (s.disableEncrypt) out.add("禁用加密")
+        if (s.privateMode) out.add("私有模式")
+        if (s.acceptDns) out.add("接受 DNS")
+        if (s.socks5.isNotEmpty()) out.add("SOCKS5")
+        if (s.portForward.isNotEmpty()) out.add("端口转发")
+        if (s.encryptAlgo.isNotEmpty()) out.add("加密算法")
+        if (s.compression.isNotEmpty()) out.add("压缩")
+        if (s.proxyNetworks.isNotEmpty()) out.add("代理网段")
+        if (s.exitNodes.isNotEmpty()) out.add("出口节点 VIP")
+        if (s.dnsServer.isNotEmpty()) out.add("DNS")
+        return out
+    }
+}
+
+/**
+ * Report produced by [TomlUtils.parseLenient].
+ *
+ * [recognized] is false only when the text contained nothing usable at all —
+ * missing optional fields never make an import fail.
+ */
+data class ImportResult(
+    val state: ConfigState,
+    val nodesFound: Int,
+    val fieldsFound: List<String>,
+    val warnings: List<String> = emptyList()
+) {
+    val recognized: Boolean get() = nodesFound > 0 || fieldsFound.isNotEmpty()
 }

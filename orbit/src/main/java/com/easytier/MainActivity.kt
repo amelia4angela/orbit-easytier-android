@@ -1459,18 +1459,69 @@ class MainActivity : ComponentActivity() {
                 return
             }
             val text = inputStream.bufferedReader().use { it.readText() }
-            configState = TomlUtils.jsonToConfigState(TomlUtils.parseTomlToJson(text))
+
+            // Lenient parse: any text that contains *something* usable imports fine.
+            val result = TomlUtils.parseLenient(text)
+            if (!result.recognized) {
+                AppLogger.w("MainActivity", "TOML import: nothing recognized in $fileName")
+                AlertDialog.Builder(this)
+                    .setTitle(tr("无法识别的格式", "Unrecognized format"))
+                    .setMessage(importFailureMessage(fileName, result))
+                    .setPositiveButton(tr("好的", "OK"), null)
+                    .show()
+                return
+            }
+
+            configState = result.state
             val autoName = fileName.removeSuffix(".toml").removeSuffix(".TOML")
+                .removeSuffix(".json").removeSuffix(".txt")
                 .replace(Regex("[/\\\\:*?\"<>|]"), "_").take(64)
             saveConfig(autoName)
-            Toast.makeText(this, tr("已导入并保存: $autoName", "Imported & saved: $autoName"),
-                Toast.LENGTH_SHORT).show()
-            AppLogger.i("MainActivity", "TOML import OK: $fileName")
+            AppLogger.i("MainActivity",
+                "TOML import OK: $fileName nodes=${result.nodesFound} fields=${result.fieldsFound.size}")
+            showImportReportDialog(fileName, autoName, result)
         } catch (t: Throwable) {
             AppLogger.e("MainActivity", "TOML import error", t)
             Toast.makeText(this, tr("导入错误: ${t.message}", "Import error: ${t.message}"),
                 Toast.LENGTH_LONG).show()
         }
+    }
+
+    /** Result dialog: what was recognized, plus any warnings. */
+    private fun showImportReportDialog(fileName: String, savedAs: String, r: ImportResult) {
+        val sb = StringBuilder()
+        sb.append(if (langZh) "已导入并保存: $savedAs\n\n" else "Imported & saved: $savedAs\n\n")
+        sb.append(if (langZh)
+            "识别到 ${r.nodesFound} 个节点、${r.fieldsFound.size} 个字段\n"
+        else
+            "Found ${r.nodesFound} node(s) and ${r.fieldsFound.size} field(s)\n")
+        if (r.fieldsFound.isNotEmpty()) {
+            sb.append(if (langZh) "字段: " else "Fields: ")
+            sb.append(r.fieldsFound.joinToString(if (langZh) "、" else ", "))
+            sb.append('\n')
+        }
+        if (r.warnings.isNotEmpty()) {
+            sb.append(if (langZh) "\n提示:\n" else "\nNotes:\n")
+            r.warnings.forEach { sb.append("• ").append(it).append('\n') }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(tr("导入结果", "Import result"))
+            .setMessage(sb.toString().trim())
+            .setPositiveButton(tr("好的", "OK"), null)
+            .show()
+    }
+
+    private fun importFailureMessage(fileName: String, r: ImportResult): String {
+        val sb = StringBuilder()
+        sb.append(if (langZh)
+            "没能从「$fileName」中提取到任何配置信息。\n"
+        else
+            "Could not extract any config from \"$fileName\".\n")
+        if (r.warnings.isNotEmpty()) {
+            sb.append(if (langZh) "\n提示:\n" else "\nNotes:\n")
+            r.warnings.forEach { sb.append("• ").append(it).append('\n') }
+        }
+        return sb.toString().trim()
     }
 
     private fun tr(zh: String, en: String): String = if (langZh) zh else en

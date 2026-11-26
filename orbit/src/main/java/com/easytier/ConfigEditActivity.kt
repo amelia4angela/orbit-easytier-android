@@ -528,18 +528,54 @@ class ConfigEditActivity : AppCompatActivity() {
                 return
             }
             val text = inputStream.bufferedReader().use { it.readText() }
-            val json = TomlUtils.parseTomlToJson(text)
-            val config = TomlUtils.jsonToConfigState(json)
-            val autoName = TomlUtils.deriveConfigName(json)
-            saveConfigToDisk(autoName, config)
-            AppLogger.i("ConfigEdit", "Imported config: $autoName")
-            Toast.makeText(this, tr("已导入并保存: $autoName", "Imported & saved: $autoName"), Toast.LENGTH_SHORT).show()
-            // The UI will be stale, but user can switch config to see it
-            // For a better UX, finish and let MainActivity reload
-            val result = Intent()
-            result.putExtra(EXTRA_CONFIG_NAME, autoName)
-            setResult(RESULT_OK, result)
-            finish()
+            // Lenient parse: structure/field-name/stray content doesn't matter.
+            val result = TomlUtils.parseLenient(text)
+            if (!result.recognized) {
+                AppLogger.w("ConfigEdit", "Import: nothing recognized in $fileName")
+                android.app.AlertDialog.Builder(this)
+                    .setTitle(tr("无法识别的格式", "Unrecognized format"))
+                    .setMessage(buildString {
+                        append(tr("没能从「$fileName」中提取到任何配置信息。\n",
+                            "Could not extract any config from \"$fileName\".\n"))
+                        if (result.warnings.isNotEmpty()) {
+                            append(tr("\n提示:\n", "\nNotes:\n"))
+                            result.warnings.forEach { append("• ").append(it).append('\n') }
+                        }
+                    }.trim())
+                    .setPositiveButton(tr("好的", "OK"), null)
+                    .show()
+                return
+            }
+
+            val autoName = TomlUtils.deriveNameFromState(result.state)
+            saveConfigToDisk(autoName, result.state)
+            AppLogger.i("ConfigEdit",
+                "Imported config: $autoName nodes=${result.nodesFound} fields=${result.fieldsFound.size}")
+
+            val report = buildString {
+                append(tr("已导入并保存: $autoName\n\n", "Imported & saved: $autoName\n\n"))
+                append(tr("识别到 ${result.nodesFound} 个节点、${result.fieldsFound.size} 个字段\n",
+                    "Found ${result.nodesFound} node(s) and ${result.fieldsFound.size} field(s)\n"))
+                if (result.fieldsFound.isNotEmpty()) {
+                    append(tr("字段: ", "Fields: "))
+                    append(result.fieldsFound.joinToString(tr("、", ", ")))
+                    append('\n')
+                }
+                if (result.warnings.isNotEmpty()) {
+                    append(tr("\n提示:\n", "\nNotes:\n"))
+                    result.warnings.forEach { append("• ").append(it).append('\n') }
+                }
+            }.trim()
+            android.app.AlertDialog.Builder(this)
+                .setTitle(tr("导入结果", "Import result"))
+                .setMessage(report)
+                .setPositiveButton(tr("好的", "OK")) { _: android.content.DialogInterface, _: Int ->
+                    val res = Intent()
+                    res.putExtra(EXTRA_CONFIG_NAME, autoName)
+                    setResult(RESULT_OK, res)
+                    finish()
+                }
+                .show()
         } catch (t: Throwable) {
             Toast.makeText(this, tr("导入错误: ${t.message}", "Import error: ${t.message}"), Toast.LENGTH_LONG).show()
             AppLogger.e("ConfigEdit", "TOML import error", t)

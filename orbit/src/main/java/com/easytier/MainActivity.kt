@@ -218,7 +218,7 @@ class MainActivity : ComponentActivity() {
         notificationHelper?.createChannels()
 
         setContent {
-            EasyTierTheme(darkTheme = isDarkTheme, dynamicColor = dynamicColor) {
+            EasyTierTheme(darkTheme = if (dynamicColor) isSystemInDarkTheme() else isDarkTheme, dynamicColor = dynamicColor) {
                 MainScreen(
                     connectionState = connectionState,
                     onToggleConnection = {
@@ -1536,7 +1536,10 @@ class MainActivity : ComponentActivity() {
 
     private fun toggleTheme() {
         isDarkTheme = !isDarkTheme
-        getSharedPreferences(PREFS_THEME, MODE_PRIVATE).edit().putBoolean("dark_theme", isDarkTheme).apply()
+        dynamicColor = false
+        getSharedPreferences(PREFS_THEME, MODE_PRIVATE).edit()
+            .putBoolean("dark_theme", isDarkTheme)
+            .putBoolean("dynamic_color", false).apply()
         AppLogger.i("MainActivity", "Theme switched: ${if (isDarkTheme) "dark" else "light"}")
     }
 

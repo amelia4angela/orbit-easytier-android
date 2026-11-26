@@ -129,8 +129,11 @@ fun MainScreen(
                     targetState = currentTab,
                     transitionSpec = {
                         (fadeIn(tween(300, easing = HarmonyEasing)) +
-                                slideInVertically(tween(300, easing = HarmonyEasing)) { it / 8 })
-                            .togetherWith(fadeOut(tween(200, easing = HarmonyEasing)))
+                            slideInHorizontally(initialOffsetX = { it / 6 }))
+                            .togetherWith(
+                                fadeOut(tween(200, easing = HarmonyEasing)) +
+                                    slideOutHorizontally(targetOffsetX = { -it / 6 })
+                            )
                     },
                     label = "tabTransition"
                 ) { tab ->
@@ -858,13 +861,13 @@ private fun MoreTab(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (!isDarkTheme) colors.accentContainer else colors.inputBg)
+                            .background(if (!isDarkTheme && !dynamicColor) colors.accentContainer else colors.inputBg)
                             .border(
                                 0.5.dp,
-                                if (!isDarkTheme) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
+                                if (!isDarkTheme && !dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
                                 RoundedCornerShape(8.dp)
                             )
-                            .clickable { if (isDarkTheme) onToggleTheme() }
+                            .clickable { if (dynamicColor) onToggleDynamic(); if (isDarkTheme) onToggleTheme() }
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
@@ -876,13 +879,13 @@ private fun MoreTab(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isDarkTheme) colors.accentContainer else colors.inputBg)
+                            .background(if (isDarkTheme && !dynamicColor) colors.accentContainer else colors.inputBg)
                             .border(
                                 0.5.dp,
-                                if (isDarkTheme) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
+                                if (isDarkTheme && !dynamicColor) colors.accent.copy(alpha = 0.3f) else colors.inputBorder,
                                 RoundedCornerShape(8.dp)
                             )
-                            .clickable { if (!isDarkTheme) onToggleTheme() }
+                            .clickable { if (dynamicColor) onToggleDynamic(); if (!isDarkTheme) onToggleTheme() }
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(

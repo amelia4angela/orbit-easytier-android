@@ -3,7 +3,6 @@ package com.easytier.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.dynamicColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -72,9 +71,10 @@ fun EasyTierTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
     val colorScheme = when {
-        dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ->
-            dynamicColorScheme(androidx.compose.ui.platform.LocalContext.current)
+        dynamicColor && android.os.Build.VERSION.SDK_INT >= 27 ->
+            wallpaperScheme(appCtx, darkTheme)
         darkTheme -> DarkColorScheme
         else -> YouthfulLightColorScheme
     }
@@ -95,4 +95,20 @@ fun EasyTierTheme(
             content = content
         )
     }
+}
+
+/** Material You style dynamic color from the wallpaper's primary color (API 27+). */
+@androidx.annotation.RequiresApi(27)
+private fun wallpaperScheme(
+    ctx: android.content.Context,
+    dark: Boolean
+): androidx.compose.material3.ColorScheme {
+    val fallback = if (dark) 0xFF8B5CF6.toInt() else 0xFF7C69F0.toInt()
+    val primary = try {
+        android.app.WallpaperManager.getInstance(ctx).wallpaperColors?.primaryColor?.toArgb() ?: fallback
+    } catch (t: Throwable) {
+        fallback
+    }
+    val pc = Color(primary)
+    return if (dark) darkColorScheme(primary = pc) else lightColorScheme(primary = pc)
 }

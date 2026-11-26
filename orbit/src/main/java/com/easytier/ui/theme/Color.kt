@@ -6,51 +6,51 @@ import androidx.compose.ui.graphics.Color
 //  EasyTier Color Palette — Light & Dark Modes
 // ════════════════════════════════════════════════════
 
-// ── Light Theme (青春靓丽 — youthful & vibrant) ──
-val LightBgStart = Color(0xFFFDF2F8)         // Warm pink-ish
-val LightBgMid = Color(0xFFF0F4FF)            // Light blue
-val LightBgEnd = Color(0xFFFAF5FF)            // Soft violet
+// ── Light Theme (FlClash style — flat light grey + orange accent) ──
+val LightBgStart = Color(0xFFF4F4F5)         // Flat light grey (no gradient)
+val LightBgMid = Color(0xFFF4F4F5)
+val LightBgEnd = Color(0xFFF4F4F5)
 
 val LightSurface = Color(0xFFFFFFFF)           // White
-val LightSurfaceDim = Color(0xFFF8F8FF)        // Near-white for secondary cards
-val LightCardBorder = Color(0x1A6366F1)        // Subtle indigo border
+val LightSurfaceDim = Color(0xFFF8F8F8)        // Near-white for secondary cards
+val LightCardBorder = Color(0x1AF57C00)        // Subtle orange border
 
-val LightTextPrimary = Color(0xFF1E1B2E)       // Near-black
-val LightTextSecondary = Color(0xFF6B6584)     // Muted purple-gray
-val LightTextTertiary = Color(0xFFA59DB8)      // Light muted
+val LightTextPrimary = Color(0xFF1C1B1F)       // Near-black
+val LightTextSecondary = Color(0xFF6B6B70)     // Muted grey
+val LightTextTertiary = Color(0xFF9E9EA3)      // Light muted
 
-// ── Light Accent (gradient: indigo → pink) ──
-val LightAccentStart = Color(0xFF6366F1)       // Indigo-500
-val LightAccentEnd = Color(0xFFEC4899)         // Pink-500
-val LightAccent = Color(0xFF7C69F0)            // Mid-point for solid uses
-val LightAccentLight = Color(0xFFA78BFA)       // Violet-400
-val LightAccentContainer = Color(0xFFEEF2FF)   // Very light indigo bg
+// ── Light Accent (FlClash orange) ──
+val LightAccentStart = Color(0xFFFF8C00)       // Orange-500
+val LightAccentEnd = Color(0xFFF57C00)         // Orange-800
+val LightAccent = Color(0xFFF57C00)            // Solid accent
+val LightAccentLight = Color(0xFFFFAB40)       // Orange-300
+val LightAccentContainer = Color(0xFFFFF3E0)   // Orange-50 container
 
-val LightInputBg = Color(0xFFF5F3FF)           // Slight violet tint
-val LightInputBorder = Color(0xFFD4D0E0)
-val LightInputFocusBorder = Color(0xFF7C69F0)
+val LightInputBg = Color(0xFFF4F4F5)           // Flat light grey
+val LightInputBorder = Color(0xFFE0E0E0)
+val LightInputFocusBorder = Color(0xFFF57C00)
 
-// ── Dark Theme (深色 — deep blue-purple) ──
-val DarkBgStart = Color(0xFF0F0C29)            // Deep blue-black
-val DarkBgMid = Color(0xFF302B63)              // Purple
-val DarkBgEnd = Color(0xFF24243E)              // Grey-purple
+// ── Dark Theme (FlClash style — flat #121212 + orange accent) ──
+val DarkBgStart = Color(0xFF121212)            // Flat near-black (no gradient)
+val DarkBgMid = Color(0xFF121212)
+val DarkBgEnd = Color(0xFF121212)
 
-val DarkGlass = Color(0x14FFFFFF)              // 8% white — card fill
-val DarkGlassStrong = Color(0x0DFFFFFF)        // 5% white — thin card
-val DarkGlassBorder = Color(0x26FFFFFF)        // 15% white — border
-val DarkNavBar = Color(0x1EFFFFFF)              // 12% white — bottom nav bg
+val DarkGlass = Color(0xFF1E1E1E)              // Card fill (flat)
+val DarkGlassStrong = Color(0xFF2C2C2C)        // Stronger card
+val DarkGlassBorder = Color(0x26FFFFFF)        // 15% white border
+val DarkNavBar = Color(0xFF1E1E1E)             // Bottom nav bg
 
 val DarkTextPrimary = Color(0xE6FFFFFF)        // 90% white
 val DarkTextSecondary = Color(0x8CFFFFFF)      // 55% white
 val DarkTextTertiary = Color(0x59FFFFFF)       // 35% white
 
-val DarkAccent = Color(0xFF8B5CF6)             // Violet-500
-val DarkAccentDark = Color(0xFF6D28D9)         // Violet-700
-val DarkAccentLight = Color(0xFFA78BFA)        // Violet-400
+val DarkAccent = Color(0xFFFF8C00)             // Orange-500
+val DarkAccentDark = Color(0xFFE65100)         // Orange-900
+val DarkAccentLight = Color(0xFFFFAB40)        // Orange-300
 
 val DarkInputBg = Color(0x0FFFFFFF)            // 6% white
 val DarkInputBorder = Color(0x1AFFFFFF)        // 10% white
-val DarkInputFocusBorder = Color(0x808B5CF6)   // 50% accent
+val DarkInputFocusBorder = Color(0x80FF8C00)   // 50% accent
 
 // ── Status (shared between themes) ──
 val StatusGood = Color(0xFF4ADE80)             // Green-400
@@ -62,7 +62,7 @@ val StatusConnectedBgLight = Color(0xE8F5E9)   // Light green bg for light mode
 
 // ── Material 3 tokens — Dark ──
 val md_theme_dark_primary = DarkAccentLight
-val md_theme_dark_onPrimary = Color(0xFF0A1BB4)
+val md_theme_dark_onPrimary = Color(0xFF2E1A00)
 val md_theme_dark_primaryContainer = DarkAccent.copy(alpha = 0.3f)
 val md_theme_dark_onPrimaryContainer = DarkAccentLight
 val md_theme_dark_secondary = Color(0xFFC5C4DD)
@@ -85,7 +85,7 @@ val md_theme_dark_error = Color(0xFFFFB4AB)
 val md_theme_light_primary = LightAccent
 val md_theme_light_onPrimary = Color(0xFFFFFFFF)
 val md_theme_light_primaryContainer = LightAccentContainer
-val md_theme_light_onPrimaryContainer = Color(0xFF211361)
+val md_theme_light_onPrimaryContainer = Color(0xFF3B1F00)
 val md_theme_light_secondary = Color(0xFF5E5C72)
 val md_theme_light_onSecondary = Color(0xFFFFFFFF)
 val md_theme_light_secondaryContainer = Color(0xFFE3E0F9)
@@ -98,6 +98,6 @@ val md_theme_light_surface = LightSurface
 val md_theme_light_onSurface = LightTextPrimary
 val md_theme_light_surfaceVariant = LightSurfaceDim
 val md_theme_light_onSurfaceVariant = LightTextSecondary
-val md_theme_light_outline = Color(0xFFC4C0D0)
-val md_theme_light_outlineVariant = Color(0xFFE4E0F0)
+val md_theme_light_outline = Color(0xFFE0E0E0)
+val md_theme_light_outlineVariant = Color(0xFFF0F0F0)
 val md_theme_light_error = Color(0xFFBA1A1A)

@@ -71,6 +71,8 @@ fun MainScreen(
     onViewLogs: () -> Unit,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    dynamicColor: Boolean,
+    onToggleDynamic: () -> Unit,
     connectionStartTime: Long = 0L,
     modifier: Modifier = Modifier
 ) {
@@ -166,11 +168,7 @@ fun MainScreen(
                     isDarkTheme = isDarkTheme,
                     onToggleTheme = onToggleTheme,
                     dynamicColor = dynamicColor,
-                    onToggleDynamic = {
-                        dynamicColor = !dynamicColor
-                        getSharedPreferences(PREFS_THEME, MODE_PRIVATE).edit()
-                            .putBoolean("dynamic_color", dynamicColor).apply()
-                    },
+                    onToggleDynamic = onToggleDynamic,
                     onNavigateToAbout = { showAboutPage = true },
                     isConnected = connectionState.status == ConnectionStatus.RUNNING
                             || connectionState.status == ConnectionStatus.NO_TUN,

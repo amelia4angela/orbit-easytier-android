@@ -255,6 +255,12 @@ class MainActivity : ComponentActivity() {
                     onViewLogs = { showLogDialogState = true },
                     isDarkTheme = isDarkTheme,
                     onToggleTheme = { toggleTheme() },
+                    dynamicColor = dynamicColor,
+                    onToggleDynamic = {
+                        dynamicColor = !dynamicColor
+                        getSharedPreferences(PREFS_THEME, MODE_PRIVATE).edit()
+                            .putBoolean("dynamic_color", dynamicColor).apply()
+                    },
                     connectionStartTime = startedAt
                 )
 

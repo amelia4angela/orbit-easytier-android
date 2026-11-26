@@ -6,31 +6,31 @@ import androidx.compose.ui.graphics.Color
 //  EasyTier Color Palette — Light & Dark Modes
 // ════════════════════════════════════════════════════
 
-// ── Light Theme (FlClash style — flat light grey + orange accent) ──
+// ── Light Theme (FlClash style — flat light grey + Android blue accent) ──
 val LightBgStart = Color(0xFFF4F4F5)         // Flat light grey (no gradient)
 val LightBgMid = Color(0xFFF4F4F5)
 val LightBgEnd = Color(0xFFF4F4F5)
 
 val LightSurface = Color(0xFFFFFFFF)           // White
 val LightSurfaceDim = Color(0xFFF8F8F8)        // Near-white for secondary cards
-val LightCardBorder = Color(0x1AF57C00)        // Subtle orange border
+val LightCardBorder = Color(0x1A4285F4)        // Subtle Android-blue border
 
 val LightTextPrimary = Color(0xFF1C1B1F)       // Near-black
 val LightTextSecondary = Color(0xFF6B6B70)     // Muted grey
 val LightTextTertiary = Color(0xFF9E9EA3)      // Light muted
 
-// ── Light Accent (FlClash orange) ──
-val LightAccentStart = Color(0xFFFF8C00)       // Orange-500
-val LightAccentEnd = Color(0xFFF57C00)         // Orange-800
-val LightAccent = Color(0xFFF57C00)            // Solid accent
-val LightAccentLight = Color(0xFFFFAB40)       // Orange-300
-val LightAccentContainer = Color(0xFFFFF3E0)   // Orange-50 container
+// ── Light Accent (Android / Google blue) ──
+val LightAccentStart = Color(0xFF4285F4)       // Google Blue 500
+val LightAccentEnd = Color(0xFF1A73E8)         // Google Blue 600 (one step deeper)
+val LightAccent = Color(0xFF4285F4)            // Solid accent
+val LightAccentLight = Color(0xFF8AB4F8)       // Blue 200/300 light
+val LightAccentContainer = Color(0xFFD3E3FD)   // Blue 50 container
 
 val LightInputBg = Color(0xFFF4F4F5)           // Flat light grey
 val LightInputBorder = Color(0xFFE0E0E0)
-val LightInputFocusBorder = Color(0xFFF57C00)
+val LightInputFocusBorder = Color(0xFF1A73E8)
 
-// ── Dark Theme (FlClash style — flat #121212 + orange accent) ──
+// ── Dark Theme (FlClash style — flat #121212 + Android blue accent) ──
 val DarkBgStart = Color(0xFF121212)            // Flat near-black (no gradient)
 val DarkBgMid = Color(0xFF121212)
 val DarkBgEnd = Color(0xFF121212)
@@ -44,13 +44,13 @@ val DarkTextPrimary = Color(0xE6FFFFFF)        // 90% white
 val DarkTextSecondary = Color(0x8CFFFFFF)      // 55% white
 val DarkTextTertiary = Color(0x59FFFFFF)       // 35% white
 
-val DarkAccent = Color(0xFFFF8C00)             // Orange-500
-val DarkAccentDark = Color(0xFFE65100)         // Orange-900
-val DarkAccentLight = Color(0xFFFFAB40)        // Orange-300
+val DarkAccent = Color(0xFF4285F4)             // Google Blue 500
+val DarkAccentDark = Color(0xFF1967D2)         // Google Blue 700
+val DarkAccentLight = Color(0xFF8AB4F8)        // Blue 200/300 light
 
 val DarkInputBg = Color(0x0FFFFFFF)            // 6% white
 val DarkInputBorder = Color(0x1AFFFFFF)        // 10% white
-val DarkInputFocusBorder = Color(0x80FF8C00)   // 50% accent
+val DarkInputFocusBorder = Color(0x804285F4)   // 50% accent
 
 // ── Status (shared between themes) ──
 val StatusGood = Color(0xFF4ADE80)             // Green-400
@@ -62,7 +62,7 @@ val StatusConnectedBgLight = Color(0xE8F5E9)   // Light green bg for light mode
 
 // ── Material 3 tokens — Dark ──
 val md_theme_dark_primary = DarkAccentLight
-val md_theme_dark_onPrimary = Color(0xFF2E1A00)
+val md_theme_dark_onPrimary = Color(0xFF062E6F)
 val md_theme_dark_primaryContainer = DarkAccent.copy(alpha = 0.3f)
 val md_theme_dark_onPrimaryContainer = DarkAccentLight
 val md_theme_dark_secondary = Color(0xFFC5C4DD)
@@ -85,7 +85,7 @@ val md_theme_dark_error = Color(0xFFFFB4AB)
 val md_theme_light_primary = LightAccent
 val md_theme_light_onPrimary = Color(0xFFFFFFFF)
 val md_theme_light_primaryContainer = LightAccentContainer
-val md_theme_light_onPrimaryContainer = Color(0xFF3B1F00)
+val md_theme_light_onPrimaryContainer = Color(0xFF041E49)
 val md_theme_light_secondary = Color(0xFF5E5C72)
 val md_theme_light_onSecondary = Color(0xFFFFFFFF)
 val md_theme_light_secondaryContainer = Color(0xFFE3E0F9)

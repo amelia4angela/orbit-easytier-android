@@ -2,8 +2,13 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -33,6 +38,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -73,6 +81,122 @@ fun blobPath(size: Float, petals: Int = 8): Path {
     }
     path.close()
     return path
+}
+
+/**
+ * Gear silhouette: toothed crown (outer radius) with root valleys, drawn as one
+ * closed polygon. Sampled from polar coordinates so it can be split in halves
+ * for the "cracked" failure state.
+ */
+fun gearPath(size: Float, teeth: Int = 8): Path {
+    val path = Path()
+    val c = size / 2f
+    val outer = c * 0.98f
+    val root = c * 0.72f
+    val step = (2.0 * Math.PI / teeth).toFloat()
+    var first = true
+    for (i in 0 until teeth) {
+        val a = i * step - (Math.PI / 2.0).toFloat()
+        // valley → tooth rise → crown → tooth fall → valley
+        val points = listOf(
+            (a + step * 0.03f) to root,
+            (a + step * 0.16f) to outer,
+            (a + step * 0.50f) to outer,
+            (a + step * 0.63f) to root,
+            (a + step * 0.97f) to root
+        )
+        for ((ang, r) in points) {
+            val x = c + r * cos(ang)
+            val y = c + r * sin(ang)
+            if (first) {
+                path.moveTo(x, y)
+                first = false
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+    }
+    path.close()
+    return path
+}
+
+/**
+ * Status gear (22dp by default), hand-drawn so it can crack apart:
+ *  - STARTING          → green, spins forever (~2s / turn)
+ *  - ERROR / REVOKED   → red, split in two halves pushed apart + tilted
+ *  - RUNNING / NO_TUN  → green, static
+ *  - otherwise         → grey, static
+ */
+@Composable
+fun StatusGear(
+    status: ConnectionStatus,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 22.dp
+) {
+    val colors = currentColors()
+    val isStarting = status == ConnectionStatus.STARTING
+    val isBroken = status == ConnectionStatus.ERROR || status == ConnectionStatus.REVOKED
+    val isRunning = status == ConnectionStatus.RUNNING || status == ConnectionStatus.NO_TUN
+
+    val gearColor = when {
+        isBroken -> colors.statusBad
+        isStarting || isRunning -> colors.statusGood
+        else -> colors.textTertiary
+    }
+
+    // Infinite spin: only read while STARTING, and only inside the draw phase,
+    // so a static gear never triggers recomposition.
+    val spin = rememberInfiniteTransition(label = "gearSpin")
+    val angle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "gearAngle"
+    )
+
+    Canvas(modifier = modifier.size(size)) {
+        val s = this.size.minDimension
+        val gear = gearPath(s)
+        val holeR = s * 0.15f
+        val center = Offset(s / 2f, s / 2f)
+        val holeColor = colors.surface
+
+        // Full gear: toothed crown + punched center hole
+        fun paintGear(rotation: Float) {
+            if (rotation == 0f) {
+                drawPath(gear, color = gearColor)
+                drawCircle(color = holeColor, radius = holeR, center = center)
+            } else {
+                rotate(degrees = rotation, pivot = center) {
+                    drawPath(gear, color = gearColor)
+                    drawCircle(color = holeColor, radius = holeR, center = center)
+                }
+            }
+        }
+
+        when {
+            isBroken -> {
+                // Two halves, each nudged outward and tilted a few degrees.
+                val dx = 1.5.dp.toPx()
+                val dy = 0.5.dp.toPx()
+                clipRect(left = 0f, top = 0f, right = s / 2f, bottom = s) {
+                    rotate(degrees = -8f, pivot = center) {
+                        translate(left = -dx, top = -dy) { paintGear(0f) }
+                    }
+                }
+                clipRect(left = s / 2f, top = 0f, right = s, bottom = s) {
+                    rotate(degrees = 8f, pivot = center) {
+                        translate(left = dx, top = dy) { paintGear(0f) }
+                    }
+                }
+            }
+            isStarting -> paintGear(angle)
+            else -> paintGear(0f)
+        }
+    }
 }
 
 /**
@@ -128,27 +252,31 @@ fun FlClashStatusCard(
         ) {
             // ── Left: status + node info ──
             Column(modifier = Modifier.weight(1f)) {
-                // Status pill
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(pillColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 10.dp, vertical = 3.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(pillColor)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            pillText,
-                            color = pillColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                // Status pill, preceded by the state gear
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusGear(status = state.status)
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(pillColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(pillColor)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                pillText,
+                                color = pillColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -234,7 +362,7 @@ private fun MetaItem(label: String, value: String, colors: com.easytier.ui.theme
 }
 
 /**
- * Two side-by-side speed cards (up / down) with orange sparkline,
+ * Two side-by-side speed cards (up / down) with blue sparkline,
  * mirroring FlClash's "Network speed" section.
  */
 @Composable

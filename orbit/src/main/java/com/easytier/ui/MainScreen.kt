@@ -311,65 +311,156 @@ private fun BottomNavigationBar(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
+    val isDark = LocalIsDarkTheme.current
+    val shape = RoundedCornerShape(24.dp)
+    val pillShape = RoundedCornerShape(16.dp)
+    // Glass base: keep it translucent so the list underneath bleeds through
+    val glassBase = colors.navGlass.copy(alpha = if (isDark) 0.82f else 0.74f)
+    val edgeTop = Color.White.copy(alpha = if (isDark) 0.22f else 0.70f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        Row(
+        // ── Liquid glass panel ──────────────────────────────────────────
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
+                // soft outer shadow → the bar floats above the content
                 .shadow(
-                    elevation = 14.dp,
-                    shape = RoundedCornerShape(24.dp),
+                    elevation = 18.dp,
+                    shape = shape,
                     clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.20f),
-                    spotColor = Color.Black.copy(alpha = 0.20f)
+                    ambientColor = Color.Black.copy(alpha = 0.22f),
+                    spotColor = Color.Black.copy(alpha = 0.26f)
                 )
-                .clip(RoundedCornerShape(24.dp))
-                .background(colors.navGlass)
-                .border(1.dp, colors.navGlassBorder, RoundedCornerShape(24.dp))
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .clip(shape)
+                // layer 1: translucent glass tint base
+                .background(glassBase)
+                // layer 2: bright top → deeper bottom (light passing through glass)
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.White.copy(alpha = if (isDark) 0.10f else 0.55f),
+                            0.55f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = if (isDark) 0f else 0.05f)
+                        )
+                    )
+                )
+                // layer 3: edge stroke — bright hairline up top, faint around
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            edgeTop,
+                            colors.navGlassBorder
+                        )
+                    ),
+                    shape = shape
+                )
         ) {
-            listOf(
-                Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
-                Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
-                Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
-                Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
-            ).forEach { (icon, label, tab) ->
-                val isActive = currentTab == tab
-                val pillBg by animateColorAsState(
-                    targetValue = if (isActive) colors.accent else Color.Transparent,
-                    animationSpec = tween(300, easing = HarmonyEasing),
-                    label = "navPill"
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(pillBg)
-                        .elasticPress { onTabSelected(tab) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+            // Specular highlight: 1dp white line along the top edge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0f),
+                                Color.White.copy(alpha = 0.30f),
+                                Color.White.copy(alpha = 0f)
+                            )
+                        )
+                    )
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                listOf(
+                    Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
+                    Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
+                    Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
+                    Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
+                ).forEach { (icon, label, tab) ->
+                    val isActive = currentTab == tab
+                    // Liquid pill: fades/grows in with the HarmonyOS easing
+                    val pillAlpha by animateFloatAsState(
+                        targetValue = if (isActive) 1f else 0f,
+                        animationSpec = tween(300, easing = HarmonyEasing),
+                        label = "navPill"
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isActive) Color.White else colors.textTertiary,
+                        animationSpec = tween(300, easing = HarmonyEasing),
+                        label = "navTint"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(pillShape)
+                            // active pill = blue gradient, alpha animated so it melts in
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        colors.accentStart.copy(alpha = pillAlpha),
+                                        colors.accentEnd.copy(alpha = pillAlpha)
+                                    )
+                                )
+                            )
+                            .elasticPress { onTabSelected(tab) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            tint = if (isActive) Color.White else colors.textTertiary,
-                            modifier = Modifier.size(20.dp)
+                        // glossy sheen on the upper half of the pill
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.White.copy(alpha = 0.18f * pillAlpha),
+                                            0.6f to Color.White.copy(alpha = 0.04f * pillAlpha),
+                                            1f to Color.Transparent
+                                        )
+                                    )
+                                )
                         )
-                        Text(
-                            text = label,
-                            color = if (isActive) Color.White else colors.textTertiary,
-                            fontSize = 10.sp,
-                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                        // hairline rim so the pill reads as a liquid blob
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .border(
+                                    0.5.dp,
+                                    Color.White.copy(alpha = 0.25f * pillAlpha),
+                                    pillShape
+                                )
                         )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label,
+                                tint = contentColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = label,
+                                color = contentColor,
+                                fontSize = 10.sp,
+                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
                     }
                 }
             }

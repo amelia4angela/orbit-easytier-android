@@ -3,6 +3,7 @@ package com.easytier.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -105,7 +106,7 @@ private fun wallpaperScheme(
 ): androidx.compose.material3.ColorScheme {
     val fallback = if (dark) 0xFF8B5CF6.toInt() else 0xFF7C69F0.toInt()
     val primary = try {
-        android.app.WallpaperManager.getInstance(ctx).wallpaperColors?.primaryColor?.toArgb() ?: fallback
+        android.app.WallpaperManager.getInstance(ctx).getWallpaperColors()?.primaryColor?.toArgb() ?: fallback
     } catch (t: Throwable) {
         fallback
     }

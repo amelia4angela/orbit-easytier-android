@@ -1,6 +1,7 @@
 package com.easytier
 
 import com.easytier.ui.ConfigState
+import com.easytier.ui.PeerNode
 import org.json.JSONObject
 
 /**
@@ -62,54 +63,132 @@ object TomlUtils {
         j.put("exitNodes", s.exitNodes)
         j.put("dnsServer", s.dnsServer)
         j.put("extraServers", org.json.JSONArray(s.extraServers))
+        val arr = org.json.JSONArray()
+        for (n in s.nodes) {
+            val o = org.json.JSONObject()
+            o.put("protocol", n.protocol); o.put("address", n.address); o.put("port", n.port)
+            arr.put(o)
+        }
+        j.put("nodes", arr)
+    }
+
+    /**
+     * Parse a peer URI ("tcp://host:port", v6 host may be bracketed) into a [PeerNode].
+     * Returns null when the URI is malformed (no protocol / no host / no port).
+     */
+    fun parsePeerUri(uri: String): PeerNode? {
+        val s = uri.trim()
+        val sep = s.indexOf("://")
+        if (sep <= 0) return null
+        val protocol = s.substring(0, sep).lowercase()
+        val rest = s.substring(sep + 3)
+        if (rest.isEmpty()) return null
+        return if (rest.startsWith("[")) {
+            val close = rest.indexOf(']')
+            if (close <= 1) null
+            else {
+                val host = rest.substring(0, close + 1)      // keep brackets
+                val after = rest.substring(close + 1)
+                val port = if (after.startsWith(":")) after.substring(1) else ""
+                if (port.isEmpty()) null else PeerNode(protocol, host, port)
+            }
+        } else {
+            val colon = rest.lastIndexOf(':')
+            if (colon <= 0 || colon == rest.length - 1) null
+            else PeerNode(protocol, rest.substring(0, colon), rest.substring(colon + 1))
+        }
     }
 
     /** Deserialize JSONObject → [ConfigState] (from file load). */
-    fun jsonToConfigState(j: JSONObject): ConfigState = ConfigState(
-        networkName = j.optString("networkName"),
-        secret = j.optString("secret"),
-        server = j.optString("server"),
-        port = j.optString("port"),
-        ipAddress = j.optString("ip"),
-        ipPrefix = j.optString("prefix").ifEmpty { "24" },
-        instanceName = j.optString("instanceName"),
-        hostname = j.optString("hostname"),
-        dhcp = j.optBoolean("dhcp"),
-        disableIpv6 = j.optBoolean("disableIpv6"),
-        noTun = j.optBoolean("noTun"),
-        bindDevice = j.optString("bindDevice"),
-        disableP2p = j.optBoolean("disableP2p"),
-        p2pOnly = j.optBoolean("p2pOnly"),
-        lazyP2p = j.optBoolean("lazyP2p"),
-        needP2p = j.optBoolean("needP2p"),
-        disableTcpHp = j.optBoolean("disableTcpHp"),
-        disableUdpHp = j.optBoolean("disableUdpHp"),
-        disableSymHp = j.optBoolean("disableSymHp"),
-        enableKcpProxy = j.optBoolean("enableKcpProxy"),
-        disableKcpInput = j.optBoolean("disableKcpInput"),
-        enableQuicProxy = j.optBoolean("enableQuicProxy"),
-        disableQuicInput = j.optBoolean("disableQuicInput"),
-        proxyForwardBySystem = j.optBoolean("proxyForwardBySystem"),
-        relayAllRpc = j.optBoolean("relayAllRpc"),
-        exitNode = j.optBoolean("exitNode"),
-        latencyFirst = j.optBoolean("latencyFirst"),
-        multiThread = j.optBoolean("multiThread"),
-        useSmoltcp = j.optBoolean("useSmoltcp"),
-        mtu = j.optString("mtu"),
-        disableEncrypt = j.optBoolean("disableEncrypt"),
-        privateMode = j.optBoolean("privateMode"),
-        acceptDns = j.optBoolean("acceptDns"),
-        socks5 = j.optString("socks5"),
-        portForward = j.optString("portForward"),
-        encryptAlgo = j.optString("encryptAlgo"),
-        compression = j.optString("compression"),
-        proxyNetworks = j.optString("proxyNetworks"),
-        exitNodes = j.optString("exitNodes"),
-        dnsServer = j.optString("dnsServer"),
-        extraServers = j.optJSONArray("extraServers")?.let { arr ->
+    fun jsonToConfigState(j: JSONObject): ConfigState {
+        val legacyExtra = j.optJSONArray("extraServers")?.let { arr ->
             (0 until arr.length()).map { arr.getString(it) }
         } ?: emptyList()
-    )
+
+        // Structured nodes (new format)
+        val parsed = mutableListOf<PeerNode>()
+        j.optJSONArray("nodes")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val address = o.optString("address").trim()
+                if (address.isEmpty()) continue
+                parsed.add(
+                    PeerNode(
+                        protocol = o.optString("protocol").ifEmpty { "tcp" },
+                        address = address,
+                        port = o.optString("port").trim()
+                    )
+                )
+            }
+        }
+
+        // Migration: no nodes yet → derive from legacy server/port + extraServers.
+        // Also re-derive when the legacy fields were edited elsewhere (the XML
+        // config editor writes server/port but knows nothing about `nodes`),
+        // otherwise stale nodes would silently win over the user's edit.
+        val legacyServer = j.optString("server").trim()
+        val legacyPort = j.optString("port").trim()
+        val nodesStale = parsed.isNotEmpty() && legacyServer.isNotEmpty() &&
+                (parsed.first().address != legacyServer || parsed.first().port != legacyPort)
+
+        val nodes: List<PeerNode> = if (parsed.isNotEmpty() && !nodesStale) {
+            parsed
+        } else {
+            val migrated = mutableListOf<PeerNode>()
+            if (legacyServer.isNotEmpty()) {
+                migrated.add(PeerNode("tcp", legacyServer, legacyPort))
+            }
+            for (extra in legacyExtra) {
+                parsePeerUri(extra)?.let { migrated.add(it) }
+            }
+            migrated
+        }
+
+        return ConfigState(
+            networkName = j.optString("networkName"),
+            secret = j.optString("secret"),
+            server = j.optString("server"),
+            port = j.optString("port"),
+            ipAddress = j.optString("ip"),
+            ipPrefix = j.optString("prefix").ifEmpty { "24" },
+            instanceName = j.optString("instanceName"),
+            hostname = j.optString("hostname"),
+            dhcp = j.optBoolean("dhcp"),
+            disableIpv6 = j.optBoolean("disableIpv6"),
+            noTun = j.optBoolean("noTun"),
+            bindDevice = j.optString("bindDevice"),
+            disableP2p = j.optBoolean("disableP2p"),
+            p2pOnly = j.optBoolean("p2pOnly"),
+            lazyP2p = j.optBoolean("lazyP2p"),
+            needP2p = j.optBoolean("needP2p"),
+            disableTcpHp = j.optBoolean("disableTcpHp"),
+            disableUdpHp = j.optBoolean("disableUdpHp"),
+            disableSymHp = j.optBoolean("disableSymHp"),
+            enableKcpProxy = j.optBoolean("enableKcpProxy"),
+            disableKcpInput = j.optBoolean("disableKcpInput"),
+            enableQuicProxy = j.optBoolean("enableQuicProxy"),
+            disableQuicInput = j.optBoolean("disableQuicInput"),
+            proxyForwardBySystem = j.optBoolean("proxyForwardBySystem"),
+            relayAllRpc = j.optBoolean("relayAllRpc"),
+            exitNode = j.optBoolean("exitNode"),
+            latencyFirst = j.optBoolean("latencyFirst"),
+            multiThread = j.optBoolean("multiThread"),
+            useSmoltcp = j.optBoolean("useSmoltcp"),
+            mtu = j.optString("mtu"),
+            disableEncrypt = j.optBoolean("disableEncrypt"),
+            privateMode = j.optBoolean("privateMode"),
+            acceptDns = j.optBoolean("acceptDns"),
+            socks5 = j.optString("socks5"),
+            portForward = j.optString("portForward"),
+            encryptAlgo = j.optString("encryptAlgo"),
+            compression = j.optString("compression"),
+            proxyNetworks = j.optString("proxyNetworks"),
+            exitNodes = j.optString("exitNodes"),
+            dnsServer = j.optString("dnsServer"),
+            extraServers = legacyExtra,
+            nodes = nodes
+        )
+    }
 
     // ═══════════════════════════════════════════════
     //  ConfigState → TOML (export + daemon start)
@@ -117,6 +196,10 @@ object TomlUtils {
 
     /** Escape a string value for TOML double-quoted string. */
     private fun escapeToml(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"")
+
+    /** Bracket a bare IPv6 host; already-bracketed (or IPv4/hostname) values pass through. */
+    private fun formatHost(addr: String): String =
+        if (addr.contains(':') && !addr.startsWith("[")) "[$addr]" else addr
 
     /** Build TOML string from [ConfigState] for the EasyTier daemon. */
     fun buildToml(s: ConfigState): String {
@@ -144,15 +227,27 @@ object TomlUtils {
         sb.append("network_name = \"$networkName\"\n")
         sb.append("network_secret = \"$networkSecret\"\n\n")
 
-        sb.append("[[peer]]\n")
-        sb.append("uri = \"$peerUri\"\n\n")
-
-        // Additional peers (multiple servers)
-        for (extra in s.extraServers) {
-            val uri = extra.trim()
-            if (uri.isEmpty()) continue
+        if (s.nodes.isNotEmpty()) {
+            // Structured node list (new UI)
+            for (n in s.nodes) {
+                val addr = n.address.trim()
+                val p = n.port.trim()
+                if (addr.isEmpty() || p.isEmpty()) continue
+                val uri = "${n.protocol.ifEmpty { "tcp" }}://${formatHost(addr)}:$p"
+                sb.append("[[peer]]\n")
+                sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+            }
+        } else {
             sb.append("[[peer]]\n")
-            sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+            sb.append("uri = \"$peerUri\"\n\n")
+
+            // Additional peers (multiple servers)
+            for (extra in s.extraServers) {
+                val uri = extra.trim()
+                if (uri.isEmpty()) continue
+                sb.append("[[peer]]\n")
+                sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+            }
         }
 
         if (s.disableIpv6) sb.append("disable_ipv6 = true\n")

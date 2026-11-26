@@ -1,6 +1,16 @@
 package com.easytier.ui
 
 /**
+ * A single server node (peer) entry edited in the config form.
+ * [protocol] is "tcp" or "udp"; [address] keeps IPv6 brackets as typed.
+ */
+data class PeerNode(
+    val protocol: String = "tcp",   // tcp | udp
+    val address: String = "",
+    val port: String = ""
+)
+
+/**
  * UI state for all config form fields.
  * Mirrors the fields in MainActivity's existing XML layout.
  * Used by Compose to read/write values without touching Android Views.
@@ -65,5 +75,8 @@ data class ConfigState(
     // Custom DNS server pushed to the TUN interface (empty = system DNS)
     val dnsServer: String = "",
     // Additional peer URIs (e.g. tcp://host:port), beyond the main server+port
-    val extraServers: List<String> = emptyList()
+    val extraServers: List<String> = emptyList(),
+    // Structured server node list (primary UI). Legacy server/port/extraServers
+    // above are kept in sync for older code paths.
+    val nodes: List<PeerNode> = emptyList()
 )

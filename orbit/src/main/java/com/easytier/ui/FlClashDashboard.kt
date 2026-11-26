@@ -1,9 +1,15 @@
 package com.easytier.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,12 +34,18 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.easytier.ui.theme.currentColors
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
+
+/** HarmonyOS-style emphasized easing: fast start, long gentle settle. */
+val HarmonyEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 // ═══════════════════════════════════════════════════
 //  FlClash-style dashboard components
@@ -393,7 +405,7 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.93f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = 0.72f,
             stiffness = Spring.StiffnessMediumLow
         ),
         label = "elasticScale"
@@ -405,4 +417,158 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
             indication = null,
             onClick = onClick
         )
+}
+
+/**
+ * Node editor dialog (add / edit a single peer node).
+ *
+ * Always composed by the caller: [visible] drives an [AnimatedVisibility] panel
+ * (Harmony-style scale+fade in/out) while an internal `mounted` flag keeps the
+ * Dialog on screen until the exit animation finishes.
+ */
+@Composable
+fun NodeEditDialog(
+    visible: Boolean,
+    initial: PeerNode? = null,
+    langZh: Boolean = true,
+    onSave: (PeerNode) -> Unit,
+    onDelete: (() -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
+    val colors = currentColors()
+
+    var mounted by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            mounted = true
+        } else if (mounted) {
+            delay(320)
+            mounted = false
+        }
+    }
+    if (!mounted) return
+
+    var protocol by remember(initial) { mutableStateOf(initial?.protocol ?: "tcp") }
+    var address by remember(initial) { mutableStateOf(initial?.address ?: "") }
+    var port by remember(initial) { mutableStateOf(initial?.port ?: "") }
+    val canSave = address.isNotBlank() && port.isNotBlank()
+
+    Dialog(onDismissRequest = onDismiss) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
+            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
+                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .fillMaxWidth()
+                    .flGlassCard(colors, 20.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = if (initial == null) T("添加节点", "Add Node", langZh)
+                    else T("编辑节点", "Edit Node", langZh),
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                // ── Protocol: two segmented pills ──
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("tcp", "udp").forEach { proto ->
+                        val selected = protocol == proto
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(50))
+                                .background(if (selected) colors.accent else colors.inputBg)
+                                .border(
+                                    0.5.dp,
+                                    if (selected) colors.accent else colors.inputBorder,
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable { protocol = proto }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = proto.uppercase(),
+                                color = if (selected) Color.White else colors.textSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                HmTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = T("地址", "Address", langZh),
+                    placeholder = "1.2.3.4 或 [::1]",
+                    colors = colors
+                )
+
+                HmTextField(
+                    value = port,
+                    onValueChange = { input -> if (input.all { it.isDigit() }) port = input },
+                    label = T("端口", "Port", langZh),
+                    placeholder = "11011",
+                    keyboardType = KeyboardType.Number,
+                    colors = colors
+                )
+
+                // ── Actions: delete (edit only) / cancel / save ──
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    onDelete?.let { delete ->
+                        Text(
+                            text = T("删除", "Delete", langZh),
+                            color = colors.dangerText,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { delete() }
+                                .padding(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = T("取消", "Cancel", langZh),
+                        color = colors.textSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onDismiss() }
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (canSave) colors.accent else colors.accent.copy(alpha = 0.35f)
+                            )
+                            .clickable(enabled = canSave) {
+                                onSave(PeerNode(protocol, address.trim(), port.trim()))
+                            }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = T("保存", "Save", langZh),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

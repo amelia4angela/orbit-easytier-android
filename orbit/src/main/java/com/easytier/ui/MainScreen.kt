@@ -128,8 +128,9 @@ fun MainScreen(
                 AnimatedContent(
                     targetState = currentTab,
                     transitionSpec = {
-                        (fadeIn(tween(220)) + slideInVertically { it / 6 })
-                            .togetherWith(fadeOut(tween(140)))
+                        (fadeIn(tween(300, easing = HarmonyEasing)) +
+                                slideInVertically(tween(300, easing = HarmonyEasing)) { it / 8 })
+                            .togetherWith(fadeOut(tween(200, easing = HarmonyEasing)))
                     },
                     label = "tabTransition"
                 ) { tab ->
@@ -308,7 +309,7 @@ private fun BottomNavigationBar(
                 val isActive = currentTab == tab
                 val pillBg by animateColorAsState(
                     targetValue = if (isActive) colors.accent else Color.Transparent,
-                    animationSpec = tween(250),
+                    animationSpec = tween(300, easing = HarmonyEasing),
                     label = "navPill"
                 )
                 Box(
@@ -903,7 +904,7 @@ private fun MoreTab(
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            T("取色", "You", langZh),
+                            T("跟随系统", "System", langZh),
                             color = if (dynamicColor) colors.accentLight else colors.textTertiary,
                             fontSize = 12.sp
                         )

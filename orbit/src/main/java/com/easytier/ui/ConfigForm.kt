@@ -101,80 +101,114 @@ fun ConfigForm(
                     }
                 }
 
-                // Server + Port
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HmTextField(
-                        value = config.server,
-                        onValueChange = { onConfigChange(config.copy(server = it)) },
-                        label = T("服务器", "Server", langZh),
-                        placeholder = T("例如 1.2.3.4", "e.g. 1.2.3.4", langZh),
-                        modifier = Modifier.weight(1f),
-                        colors = colors
-                    )
-                    HmTextField(
-                        value = config.port,
-                        onValueChange = { onConfigChange(config.copy(port = it)) },
-                        label = T("端口", "Port", langZh),
-                        placeholder = "11000",
-                        modifier = Modifier.width(100.dp),
-                        keyboardType = KeyboardType.Number,
-                        colors = colors
+                // Server nodes (rounded sub-card: list + add)
+                var nodeDialogVisible by remember { mutableStateOf(false) }
+                var editingIndex by remember { mutableStateOf(-1) }
+
+                // Keep legacy server/port/extraServers in sync so existing paths
+                // (start validation, peer label, TOML export) keep working.
+                fun applyNodes(list: List<PeerNode>) {
+                    val first = list.firstOrNull()
+                    onConfigChange(
+                        config.copy(
+                            nodes = list,
+                            server = first?.address ?: "",
+                            port = first?.port ?: "",
+                            extraServers = list.drop(1).map { "${it.protocol}://${it.address}:${it.port}" }
+                        )
                     )
                 }
 
-                // Extra servers (multiple peers) — list + add
-                if (config.extraServers.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        config.extraServers.forEachIndexed { index, uri ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    uri,
-                                    color = colors.textSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Box(
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .flGlassCard(colors, 16.dp)
+                        .padding(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SectionLabel(T("服务器节点", "Server Nodes", langZh), colors)
+
+                        if (config.nodes.isEmpty()) {
+                            Text(
+                                text = T("暂无节点，点击下方添加", "No nodes yet", langZh),
+                                color = colors.textTertiary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(vertical = 6.dp)
+                            )
+                        } else {
+                            config.nodes.forEachIndexed { index, node ->
+                                Row(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(colors.inputBg)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
                                         .clickable {
-                                            onConfigChange(config.copy(extraServers = config.extraServers.filterIndexed { i, _ -> i != index }))
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) { Text("✕", color = colors.dangerText, fontSize = 12.sp) }
+                                            editingIndex = index
+                                            nodeDialogVisible = true
+                                        }
+                                        .padding(start = 4.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${node.protocol}://${node.address}:${node.port}",
+                                        color = colors.textSecondary,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    NodeActionButton("✎", colors.textTertiary) {
+                                        editingIndex = index
+                                        nodeDialogVisible = true
+                                    }
+                                    NodeActionButton("🗑", colors.dangerText) {
+                                        applyNodes(config.nodes.filterIndexed { i, _ -> i != index })
+                                    }
+                                }
                             }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    editingIndex = -1
+                                    nodeDialogVisible = true
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+ " + T("添加初始节点", "Add Initial Node", langZh),
+                                color = colors.accent,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    var newServer by remember { mutableStateOf("") }
-                    HmTextField(
-                        value = newServer,
-                        onValueChange = { newServer = it },
-                        label = T("更多服务器", "More Servers", langZh),
-                        placeholder = T("tcp://host:port", "tcp://host:port", langZh),
-                        modifier = Modifier.weight(1f),
-                        colors = colors
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.accent.copy(alpha = 0.15f))
-                            .clickable {
-                                val v = newServer.trim()
-                                if (v.isNotEmpty() && v !in config.extraServers) {
-                                    onConfigChange(config.copy(extraServers = config.extraServers + v))
-                                    newServer = ""
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) { Text("＋", color = colors.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                }
+
+                // Edit/create dialog (composed always so its exit animation can play)
+                NodeEditDialog(
+                    visible = nodeDialogVisible,
+                    initial = config.nodes.getOrNull(editingIndex),
+                    langZh = langZh,
+                    onSave = { node ->
+                        val list = config.nodes.toMutableList()
+                        if (editingIndex in list.indices) list[editingIndex] = node else list.add(node)
+                        applyNodes(list)
+                        nodeDialogVisible = false
+                    },
+                    onDelete = if (editingIndex in config.nodes.indices) {
+                        {
+                            applyNodes(config.nodes.filterIndexed { i, _ -> i != editingIndex })
+                            nodeDialogVisible = false
+                        }
+                    } else null,
+                    onDismiss = { nodeDialogVisible = false }
+                )
 
                 // Local IP
                 HmTextField(
@@ -419,8 +453,24 @@ private fun SectionLabel(text: String, colors: AppColors) {
     )
 }
 
+/**
+ * Small square glyph button used for the per-node edit / delete actions.
+ */
 @Composable
-private fun HmTextField(
+private fun NodeActionButton(glyph: String, tint: ComposeColor, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(glyph, color = tint, fontSize = 14.sp)
+    }
+}
+
+@Composable
+internal fun HmTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,

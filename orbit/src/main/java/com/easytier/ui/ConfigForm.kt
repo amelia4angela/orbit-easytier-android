@@ -47,13 +47,20 @@ fun ConfigForm(
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // ── Basic Config ──
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.surface)
+                .padding(16.dp)
         ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 SectionLabel(T("基本配置", "Basic Config", langZh), colors)
 
                 HmTextField(
@@ -214,10 +221,14 @@ fun ConfigForm(
                     )
                 }
             }
+        }
 
         // ── Advanced Options ──
         Box(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(colors.surface)
         ) {
             Column {
                 Row(

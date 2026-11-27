@@ -8,7 +8,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.theme.currentColors
 
 /**
@@ -59,9 +59,9 @@ fun RunningIndicator(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (running) colors.accentContainer else colors.warningBg)
-            .border(0.5.dp, tint.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            // 语义色底（运行中 accent / 启动中 warning）+ 玻璃薄雾/描边：状态色不变，只叠材质
+            .background(if (running) colors.accentContainer else colors.warningBg, RoundedCornerShape(14.dp))
+            .glassSurface(radius = 14.dp, intensity = 0.35f)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

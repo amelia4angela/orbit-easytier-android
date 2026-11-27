@@ -41,8 +41,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.easytier.ui.glass.GlassMotion
+import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.GlassTheme
 import com.easytier.ui.glass.components.GlassSurface
+import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.effects.GlassSky
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
@@ -519,8 +521,8 @@ private fun LogsTab(langZh: Boolean) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
+                // 日志面板：内容卡玻璃材质（等宽字号密集，保持高强度可读填充）
+                .glassCard(radius = 12.dp)
                 .padding(12.dp)
         ) {
             when {
@@ -814,8 +816,8 @@ private fun ConfigTab(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(colors.surface)
+                // 配置管理条：分组容器玻璃材质（内容卡档，低强度）
+                .glassCard(radius = 16.dp)
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1140,9 +1142,8 @@ private fun MoreTab(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                // 关于入口：与 SettingsNavRow 同一套内容卡玻璃材质
+                .glassCard(radius = 12.dp)
                 .clickable { onNavigateToAbout() }
                 .padding(16.dp)
         ) {
@@ -1216,9 +1217,8 @@ fun SettingsNavRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
-            .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+            // 设置行卡：内容卡玻璃材质（高不透明填充 + 低强度薄雾/描边，无背景模糊）
+            .glassCard(radius = 12.dp)
             .clickable { onClick() }
             .padding(16.dp)
     ) {
@@ -1291,42 +1291,24 @@ fun AboutPage(
         }
     }
 
-    Column(
+    // 顶栏是 overlay：内容 Column 占满整屏并在顶部让出 topBarHeight，
+    // 滚动时内容从玻璃顶栏下面穿过。页面底色保留（与 GlassSky 同一组渐变），
+    // 转场时两张页面同时在场也不会互相透出。返回/标题逻辑完全不变。
+    val topBarHeight = 56.dp
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
             )
     ) {
-        // Back control + title（顶栏玻璃，与二级页统一）
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-                .glassSurface(radius = 16.dp, intensity = 0.9f)
-                .padding(horizontal = 2.dp, vertical = 2.dp)
-        ) {
-            HmBackGlyph(
-                onBack = onBack,
-                colors = colors,
-                modifier = Modifier.align(Alignment.CenterStart)
-            )
-            Text(
-                T("关于 Orbit", "About Orbit", langZh),
-                color = colors.textPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-
         // Content
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
-                .padding(top = 8.dp, bottom = 32.dp),
+                .padding(top = topBarHeight + 8.dp, bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -1334,9 +1316,8 @@ fun AboutPage(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(colors.surface)
-                    .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(20.dp))
+                    // 关于页主卡片：内容卡玻璃材质（大圆角，低强度薄雾，无可读性损失）
+                    .glassCard(radius = 20.dp, intensity = 0.2f)
                     .padding(20.dp)
             ) {
                 Column(
@@ -1383,8 +1364,9 @@ fun AboutPage(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.accentContainer.copy(alpha = 0.5f))
+                            // 品牌色底 + 玻璃薄雾/描边（与弹窗主按钮同一手法）
+                            .background(colors.accentContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .glassSurface(radius = 8.dp, intensity = 0.3f)
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Row(
@@ -1409,8 +1391,8 @@ fun AboutPage(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.surfaceDim)
+                            // 可点链接块：内容卡玻璃材质
+                            .glassCard(radius = 8.dp, intensity = 0.22f)
                             .clickable {
                                 val intent = android.content.Intent(
                                     android.content.Intent.ACTION_VIEW,
@@ -1444,8 +1426,8 @@ fun AboutPage(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.surfaceDim)
+                            // 检查更新行：内容卡玻璃材质（内嵌 HmSwitch，交互不变）
+                            .glassCard(radius = 12.dp, intensity = 0.2f)
                             .clickable(enabled = !checking) {
                                 checking = true
                                 updateStatus = null
@@ -1546,6 +1528,36 @@ fun AboutPage(
                     .clickable { onOpenPrivacy() }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             )
+        }
+
+        // Floating glass top bar (overlay layer) — same back glyph + title as before.
+        GlassSurface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            radius = GlassRadius.md,
+            shadowElevation = 8.dp,
+            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(topBarHeight - 8.dp)
+            ) {
+                HmBackGlyph(
+                    onBack = onBack,
+                    colors = colors,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+                Text(
+                    T("关于 Orbit", "About Orbit", langZh),
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
     }
 }

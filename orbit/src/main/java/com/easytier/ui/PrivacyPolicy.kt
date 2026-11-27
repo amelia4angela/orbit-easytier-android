@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.components.GlassSurface
+import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.Dispatchers
@@ -207,70 +211,26 @@ fun PrivacyDocPage(
         onAccept()
     }
 
-    Column(
+    // 顶栏 overlay：内容 Column 占满整屏并在顶部让出 topBarHeight，正文从玻璃下穿过。
+    // 强制门（MainActivity 直接渲染，没有 GlassSky 祖先）时 GlassSurface 自动退化成
+    // 半透明材质 + 描边；在设置栈里则采样 MainScreen 的 GlassSky 做真实背景模糊。
+    val topBarHeight = 56.dp
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
             )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            if (!forced) {
-                HmBackGlyph(
-                    onBack = onBack,
-                    colors = colors,
-                    modifier = Modifier.align(Alignment.CenterStart)
-                )
-            }
+        Column(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(top = topBarHeight + 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    T("隐私政策", "Privacy Policy", langZh),
-                    color = colors.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                if (refreshing) {
-                    Text(
-                        T("正在同步最新版本…", "Syncing latest version…", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 10.sp
-                    )
-                }
-            }
-            if (offline) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.surfaceDim)
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        T("离线版本", "Offline", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
             if (forced) {
                 Text(
                     T(
@@ -287,9 +247,8 @@ fun PrivacyDocPage(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surface)
-                    .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(14.dp))
+                    // 正文面板：内容卡玻璃材质（低强度，长文可读性优先）
+                    .glassCard(radius = 14.dp, intensity = 0.16f)
                     .padding(14.dp)
             ) {
                 MarkdownBody(md = body, colors = colors)
@@ -342,6 +301,68 @@ fun PrivacyDocPage(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onBack
                 )
+            }
+        }
+        }
+
+        // Floating glass top bar (overlay layer) — back glyph / title / sync hint / offline chip,
+        // all unchanged, just re-parented into a glass pane.
+        GlassSurface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            radius = GlassRadius.md,
+            shadowElevation = 8.dp,
+            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(topBarHeight - 10.dp)
+            ) {
+                if (!forced) {
+                    HmBackGlyph(
+                        onBack = onBack,
+                        colors = colors,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                }
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        T("隐私政策", "Privacy Policy", langZh),
+                        color = colors.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (refreshing) {
+                        Text(
+                            T("正在同步最新版本…", "Syncing latest version…", langZh),
+                            color = colors.textTertiary,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+                if (offline) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(colors.surfaceDim)
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            T("离线版本", "Offline", langZh),
+                            color = colors.textTertiary,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
     }

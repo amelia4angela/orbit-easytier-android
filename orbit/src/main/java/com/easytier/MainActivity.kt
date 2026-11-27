@@ -49,6 +49,9 @@ import com.easytier.jni.EasyTierManager
 import com.easytier.jni.ipv4IntToString
 import com.easytier.vpn.EasyTierVpnService
 import com.easytier.ui.*
+import com.easytier.ui.glass.GlassTheme
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.rememberGlassLevel
 import com.easytier.ui.theme.EasyTierTheme
 import org.json.JSONArray
 import org.json.JSONObject
@@ -257,6 +260,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             EasyTierTheme(darkTheme = if (dynamicColor) isSystemInDarkTheme() else isDarkTheme, dynamicColor = dynamicColor) {
+            // ── 液态玻璃作用域（阶段 6 第二批）──────────────────────────────
+            // 只提供调色板 + 质量档位：MainActivity 直接渲染的弹窗（配置管理 / 新建 /
+            // 删除确认 / 配置服务器 / 日志）从此也进入 Glass 作用域，随档位变化。
+            // 主题层级、业务逻辑、弹窗显隐条件一行未动。
+            GlassTheme(level = rememberGlassLevel().value) {
                 if (!privacyAccepted) {
                     // First launch (or policy not yet accepted): full-screen blocking gate.
                     // 正文是在线拉取的 PRIVACY.md（缓存 → GitHub raw → 镜像 → 内置离线副本）。
@@ -410,9 +418,15 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.92f)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(colors.surface)
-                                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(20.dp))
+                                // 自绘日志弹窗：不透明底保证正文可读 + 玻璃薄雾/顶部高光/分段描边
+                                // （Dialog 是独立窗口，没有可采样的 GlassSky → 只上材质，不模糊）
+                                .background(colors.surface, RoundedCornerShape(20.dp))
+                                .glassSurface(
+                                    radius = 20.dp,
+                                    shape = RoundedCornerShape(20.dp),
+                                    intensity = if (isSystemInDarkTheme()) 0.55f else 0.28f,
+                                    shadowElevation = 6.dp
+                                )
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 // Title row: icon + title + pause indicator
@@ -443,9 +457,12 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(400.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isSystemInDarkTheme()) Color(0xFF1A1A2E) else Color(0xFFF5F3FF))
-                                        .border(0.5.dp, colors.inputBorder, RoundedCornerShape(12.dp))
+                                        // 日志正文面板：等宽正文底色 + 玻璃薄雾/描边
+                                        .background(
+                                            if (isSystemInDarkTheme()) Color(0xFF1A1A2E) else Color(0xFFF5F3FF),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .glassSurface(radius = 12.dp, intensity = 0.35f)
                                         .verticalScroll(scrollState)
                                         .padding(12.dp)
                                 ) {
@@ -469,7 +486,11 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (paused) colors.accent else colors.warningBg)
+                                            .background(
+                                                if (paused) colors.accent else colors.warningBg,
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .glassSurface(radius = 10.dp, intensity = 0.4f)
                                             .clickable {
                                                 paused = !paused
                                                 if (!paused) {
@@ -496,7 +517,8 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.dangerBg)
+                                            .background(colors.dangerBg, RoundedCornerShape(10.dp))
+                                            .glassSurface(radius = 10.dp, intensity = 0.4f)
                                             .clickable {
                                                 AppLogger.clear()
                                                 logContent = ""
@@ -519,7 +541,8 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.accentGradient)
+                                            .background(colors.accentGradient, RoundedCornerShape(10.dp))
+                                            .glassSurface(radius = 10.dp, intensity = 0.45f)
                                             .clickable { showLogDialogState = false }
                                             .padding(vertical = 10.dp),
                                         contentAlignment = Alignment.Center
@@ -537,6 +560,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 } // end else (privacyAccepted)
+            } // end GlassTheme
             }
         }
     }

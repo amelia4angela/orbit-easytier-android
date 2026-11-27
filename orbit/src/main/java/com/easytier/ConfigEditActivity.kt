@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.easytier.ui.ConfigForm
 import com.easytier.ui.ConfigState
+import com.easytier.ui.glass.GlassTheme
+import com.easytier.ui.glass.rememberGlassLevel
 import com.easytier.ui.theme.EasyTierTheme
 import org.json.JSONObject
 import java.io.File
@@ -70,6 +72,9 @@ class ConfigEditActivity : AppCompatActivity() {
 
         setContent {
             EasyTierTheme(darkTheme = isDarkTheme) {
+            // 液态玻璃作用域：只提供调色板 + 质量档位，ConfigForm 的卡片/分组容器
+            // （flGlassCard → glassCard）按档位渲染；编辑逻辑与此无关，一行未动。
+            GlassTheme(level = rememberGlassLevel().value) {
                 ConfigEditScreen(
                     initialConfig = initialConfig,
                     currentConfigName = currentConfigName,
@@ -98,6 +103,7 @@ class ConfigEditActivity : AppCompatActivity() {
                     },
                     onExportToml = { state -> exportToml(state) }
                 )
+            } // end GlassTheme
             }
         }
     }

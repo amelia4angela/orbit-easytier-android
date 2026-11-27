@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
@@ -660,20 +661,19 @@ private fun SpeedWaveCard(
 /** Parse "1.2 MB/s" / "350 KB/s" style strings into a Float for sparklines. */
 
 
-/** FlClash glass card: soft shadow + rounded surface + inner light hairline. */
+/**
+ * FlClash glass card: the shared content-card glass material (stable fill + low-intensity
+ * sheen/rim) with the soft 6dp lift this screen has always used.
+ *
+ * Kept as a named modifier because the dashboard / config form / dropdown popup all call it;
+ * the material itself now comes from [glassCard] so every call site moves together.
+ */
+@Composable
+@Suppress("UNUSED_PARAMETER")
 fun Modifier.flGlassCard(
     colors: com.easytier.ui.theme.AppColors,
     radius: androidx.compose.ui.unit.Dp = 18.dp
-): Modifier {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(radius)
-    return this
-        .then(Modifier.shadow(elevation = 6.dp, shape = shape, clip = false,
-            ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.10f),
-            spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.10f)))
-        .clip(shape)
-        .background(colors.surface)
-        .border(0.5.dp, colors.glassHighlight, shape)
-}
+): Modifier = this.glassCard(radius = radius, intensity = 0.18f, shadowElevation = 6.dp)
 
 
 /**

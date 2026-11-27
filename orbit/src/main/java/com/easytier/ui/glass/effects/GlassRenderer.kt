@@ -126,7 +126,9 @@ fun DrawScope.drawGlassBackdrop(colors: GlassColors, canvasSize: Size) {
 @Immutable
 class GlassSky internal constructor(
     internal val originProvider: () -> Offset,
-    internal val sizeProvider: () -> Size
+    internal val sizeProvider: () -> Size,
+    /** Paints the sky's own backdrop into a draw scope of the given size (in sky-local space). */
+    internal val drawBackdrop: DrawScope.(Size) -> Unit
 )
 
 val LocalGlassSky = staticCompositionLocalOf<GlassSky?> { null }
@@ -146,7 +148,16 @@ fun GlassSky(
 ) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     var sizePx by remember { mutableStateOf(Size.Zero) }
-    val sky = remember { GlassSky(originProvider = { origin }, sizeProvider = { sizePx }) }
+    // Keep the sky publishing the *current* backdrop lambda: a theme switch swaps the palette,
+    // and a pane that still blurred the previous colours would show a visible seam.
+    val backdropState = androidx.compose.runtime.rememberUpdatedState(backdrop)
+    val sky = remember {
+        GlassSky(
+            originProvider = { origin },
+            sizeProvider = { sizePx },
+            drawBackdrop = { canvasSize -> backdropState.value.invoke(this, canvasSize) }
+        )
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalGlassSky provides sky) {
         Box(
@@ -270,7 +281,6 @@ internal fun GlassBackdropSlice(
     val perf = rememberGlassPerformance(level)
     if (!perf.canBlur || blurRadius <= 0.dp) return
 
-    val colors = glassColors()
     var panePos by remember { mutableStateOf(Offset.Zero) }
     // Remember the sky origin/size so the pane redraws when they change.
     val skyOrigin = sky.originProvider()
@@ -295,7 +305,9 @@ internal fun GlassBackdropSlice(
                 left = skyOrigin.x - panePos.x,
                 top = skyOrigin.y - panePos.y
             ) {
-                drawGlassBackdrop(colors, skySize)
+                // Sample the sky's *own* backdrop (the screen's real background), not the demo
+                // pattern — otherwise a pane over the app blurs stripes that are not there.
+                sky.drawBackdrop.invoke(this, skySize)
             }
         }
     }

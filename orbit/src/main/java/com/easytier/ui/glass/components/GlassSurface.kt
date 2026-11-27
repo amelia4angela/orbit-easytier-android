@@ -163,3 +163,38 @@ fun Modifier.glassStable(
 
 /** Capsule variant — nav bars, chips, pills. */
 fun capsuleShape(): RoundedCornerShape = RoundedCornerShape(percent = 50)
+
+/**
+ * Content-card material: the same high-alpha [GlassColors.stableFill] that [glassStable] uses,
+ * topped by a low-intensity [glassSurface] sheen + rim.
+ *
+ * This is the one modifier for "glass on ordinary content" — settings rows, form group cards,
+ * log panels, list cards, about/privacy blocks. Intensity stays low on purpose: full-strength
+ * glass on every card of a scrolling screen is what drops frames, so navigation / dialogs /
+ * floating controls keep intensity >= 0.9 while content cards stay in the 0.15–0.25 band.
+ */
+@Composable
+fun Modifier.glassCard(
+    radius: Dp = GlassRadius.lg,
+    shape: Shape = glassShape(radius),
+    intensity: Float = 0.18f,
+    shadowElevation: Dp = 0.dp
+): Modifier {
+    val colors = glassColors()
+    var result = this
+    if (shadowElevation > 0.dp) {
+        result = result.shadow(
+            elevation = shadowElevation,
+            shape = shape,
+            clip = false,
+            ambientColor = colors.shadow,
+            spotColor = colors.shadow
+        )
+    }
+    // One fill + one rim: the stable opaque-ish fill keeps text readable, and
+    // glassSurface paints the sheen/rim on top so a card never gets a double outline.
+    return result
+        .clip(shape)
+        .background(colors.stableFill, shape)
+        .glassSurface(radius = radius, shape = shape, intensity = intensity)
+}

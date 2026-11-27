@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
@@ -132,10 +133,8 @@ fun HmDropdownField(
                 .fillMaxWidth()
                 .then(
                     if (card) {
-                        Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.surface)
-                            .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                        // 设置页下拉行：与 SettingsNavRow 同一套内容卡玻璃材质
+                        Modifier.glassCard(radius = 12.dp)
                     } else {
                         Modifier
                             .clip(RoundedCornerShape(10.dp))

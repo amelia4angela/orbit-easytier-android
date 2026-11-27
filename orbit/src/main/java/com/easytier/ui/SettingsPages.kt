@@ -36,8 +36,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.easytier.AppLogger
 import com.easytier.ui.glass.GlassRadius
-import com.easytier.ui.glass.components.glassStable
-import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.components.GlassSurface
+import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
@@ -69,8 +69,14 @@ fun HmBackGlyph(
 }
 
 /**
- * Full-screen settings sub-page: gradient background, back control + centered title,
- * scrollable body. Same visual language as [AboutPage].
+ * Full-screen settings sub-page: floating glass top bar over a scrollable body.
+ * Same visual language as [AboutPage].
+ *
+ * The top bar is an overlay: the body column fills the screen and reserves the bar's height
+ * at the top, so content scrolls *under* the glass pane. The pane samples the screen backdrop
+ * via [com.easytier.ui.glass.effects.GlassSky] (HIGH/BALANCED blur it, LITE stays translucent),
+ * which is why the pane itself carries no hand-written blur — the material comes from
+ * [com.easytier.ui.glass.components.GlassSurface] alone.
  *
  * The caller owns the back stack (it registers the BackHandler), so [onBack] is
  * the only navigation hook here.
@@ -82,45 +88,55 @@ fun SettingsSubPage(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = currentColors()
-    Column(
+    val topBarHeight = 56.dp
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            // 页面底色保留（与 MainScreen 的 GlassSky 同一组渐变）：二级页进出转场时
+            // 两张页面同时在场，不透明才不会互相透出来（旧实现就没有透底）。
             .background(
                 Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
             )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-                // 顶栏玻璃：薄雾 + 顶部高光 + 分段描边。顶栏不覆盖滚动内容，
-                // 所以只上材质、不做背景模糊（避免和页面里的玻璃嵌套模糊）。
-                .glassSurface(radius = GlassRadius.md, intensity = 0.9f)
-                .padding(horizontal = 2.dp, vertical = 2.dp)
-        ) {
-            HmBackGlyph(
-                onBack = onBack,
-                colors = colors,
-                modifier = Modifier.align(Alignment.CenterStart)
-            )
-            Text(
-                title,
-                color = colors.textPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(top = 8.dp, bottom = 32.dp),
+                .padding(top = topBarHeight + 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content
         )
+
+        // Floating glass top bar (overlay layer) — back glyph + centered title, unchanged.
+        GlassSurface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            radius = GlassRadius.md,
+            shadowElevation = 8.dp,
+            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(topBarHeight - 8.dp)
+            ) {
+                HmBackGlyph(
+                    onBack = onBack,
+                    colors = colors,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+                Text(
+                    title,
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
     }
 }
 
@@ -160,7 +176,7 @@ fun GeneralPage(
             modifier = Modifier
                 .fillMaxWidth()
                 // 分组卡片：稳定玻璃材质（高不透明度填充 + 发丝描边，无背景模糊）
-                .glassStable(radius = 12.dp)
+                .glassCard(radius = 12.dp)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column {
@@ -230,7 +246,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassStable(radius = 12.dp)
+                .glassCard(radius = 12.dp)
                 .clickable {
                     val next = !logEnabled
                     logEnabled = next
@@ -274,7 +290,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassStable(radius = 12.dp)
+                .glassCard(radius = 12.dp)
                 .clickable { onRestartCore() }
                 .padding(16.dp)
         ) {
@@ -374,7 +390,7 @@ fun ThemePage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassStable(radius = 14.dp)
+                .glassCard(radius = 14.dp)
                 .padding(vertical = 6.dp, horizontal = 6.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -407,7 +423,7 @@ fun ThemePage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassStable(radius = 14.dp)
+                .glassCard(radius = 14.dp)
                 .background(colors.inputBg.copy(alpha = 0.5f), glassShape(14.dp))
                 .padding(14.dp)
         ) {
@@ -718,7 +734,7 @@ private fun PermissionRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .glassStable(radius = 12.dp)
+            .glassCard(radius = 12.dp)
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

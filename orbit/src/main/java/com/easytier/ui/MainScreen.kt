@@ -1414,32 +1414,13 @@ fun AboutPage(
                                         updateStatus = null
                                         scope.launch {
                                             try {
-                                                val result = withContext(Dispatchers.IO) {
-                                                    val conn = URL(
-                                                        "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
-                                                    ).openConnection() as HttpURLConnection
-                                                    conn.setRequestProperty("Accept", "application/vnd.github+json")
-                                                    conn.setRequestProperty("User-Agent", "EasyTier-Android")
-                                                    conn.connectTimeout = 10000
-                                                    conn.readTimeout = 10000
-                                                    val code = conn.responseCode
-                                                    if (code == 200) {
-                                                        val body = conn.inputStream.bufferedReader().readText()
-                                                        JSONObject(body).getString("tag_name")
-                                                    } else {
-                                                        null
-                                                    }
-                                                }
-                                                updateStatus = if (result != null) {
-                                                    val latest = result.removePrefix("v")
-                                                    val current = version
-                                                    if (latest > current) {
-                                                        "new:$result"
-                                                    } else {
-                                                        "latest"
-                                                    }
+                                                val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                                if (isNewerVersion(info.tag, version)) {
+                                                    // New version → update dialog (release notes + downloads)
+                                                    updateInfo = info
+                                                    updateDialogVisible = true
                                                 } else {
-                                                    "error"
+                                                    updateStatus = "latest"
                                                 }
                                             } catch (_: Exception) {
                                                 updateStatus = "error"
@@ -1476,7 +1457,6 @@ fun AboutPage(
                                     when {
                                         updateStatus == "latest" -> colors.statusGood.copy(alpha = 0.1f)
                                         updateStatus == "error" -> colors.statusBad.copy(alpha = 0.1f)
-                                        updateStatus!!.startsWith("new:") -> colors.statusWarn.copy(alpha = 0.1f)
                                         else -> colors.surfaceDim
                                     }
                                 )
@@ -1486,50 +1466,15 @@ fun AboutPage(
                                 text = when {
                                     updateStatus == "latest" ->
                                         T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
-                                    updateStatus!!.startsWith("new:") -> {
-                                        val ver = updateStatus!!.removePrefix("new:")
-                                        T("发现新版本 $ver，点击上方链接下载", "New version $ver, tap link above to download", langZh)
-                                    }
                                     else -> T("检查失败，请检查网络连接", "Check failed, check network", langZh)
                                 },
                                 color = when {
                                     updateStatus == "latest" -> colors.statusGood
-                                    updateStatus!!.startsWith("new:") -> colors.statusWarn
                                     else -> colors.statusBad
                                 },
                                 fontSize = 12.sp
                             )
                         }
-                        // Click on "new:" to open release page
-                        if (updateStatus != null && updateStatus!!.startsWith("new:")) {
-                            val ver = updateStatus!!.removePrefix("new:")
-                            Spacer(Modifier.height(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(colors.accentContainer.copy(alpha = 0.3f))
-                                    .clickable {
-                                        val intent = android.content.Intent(
-                                            android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(
-                                                "https://github.com/amelia4angela/orbit-easytier-android/releases/tag/$ver"
-                                            )
-                                        )
-                                        context.startActivity(intent)
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = T("前往下载 →", "Go to Download →", langZh),
-                                    color = colors.accentLight,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
 
                     Spacer(Modifier.height(20.dp))
 

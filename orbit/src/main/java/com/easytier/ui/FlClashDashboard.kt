@@ -154,18 +154,22 @@ fun StatusGear(
         else -> colors.textTertiary
     }
 
-    // Infinite spin: only read while STARTING, and only inside the draw phase,
-    // so a static gear never triggers recomposition.
-    val spin = rememberInfiniteTransition(label = "gearSpin")
-    val angle by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "gearAngle"
-    )
+    // Spin only while STARTING — a static gear runs no animation at all
+    // (the infinite transition is created inside the isStarting branch).
+    val angle = if (isStarting) {
+        val spin = rememberInfiniteTransition(label = "gearSpin")
+        spin.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "gearAngle"
+        ).value
+    } else {
+        0f
+    }
 
     Canvas(modifier = modifier.size(size)) {
         val s = this.size.minDimension

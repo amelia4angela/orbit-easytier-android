@@ -292,7 +292,8 @@ fun MainScreen(
                         onToggleConnection = onToggleConnection,
                         myNodeItem = myNodeItem,
                         peerItems = peerItems,
-                        langZh = langZh
+                        langZh = langZh,
+                        connectionStartTime = connectionStartTime
                     )
                     Tab.CONFIG -> ConfigTab(
                         config = config,
@@ -653,11 +654,26 @@ private fun StatusTab(
     onToggleConnection: () -> Unit,
     myNodeItem: PeerInfoItem?,
     peerItems: List<PeerInfoItem>,
-    langZh: Boolean
+    langZh: Boolean,
+    connectionStartTime: Long = 0L
 ) {
     val scrollState = rememberScrollState()
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
                       connectionState.status == ConnectionStatus.NO_TUN
+
+    // Live uptime ticker for the status card
+    var uptimeText by remember { mutableStateOf("") }
+    LaunchedEffect(isConnected, connectionStartTime) {
+        if (!isConnected || connectionStartTime <= 0L) { uptimeText = ""; return@LaunchedEffect }
+        while (true) {
+            val elapsed = System.currentTimeMillis() - connectionStartTime
+            val secs = (elapsed / 1000) % 60
+            val mins = (elapsed / 60000) % 60
+            val hours = (elapsed / 3600000)
+            uptimeText = if (hours > 0) "${hours}h ${mins}m ${secs}s" else "${mins}m ${secs}s"
+            kotlinx.coroutines.delay(1000)
+        }
+    }
 
     val latency = myNodeItem?.let {
         if (it.latencyUs > 0) "${it.latencyUs / 1000} ms" else ""
@@ -676,6 +692,8 @@ private fun StatusTab(
                 onClick = onToggleConnection,
                 nodeLabel = myNodeItem?.ip ?: connectionState.subLabel,
                 nodeSub = myNodeItem?.let { "${it.hostname}  ·  ${it.protocol}" } ?: "",
+                uptime = uptimeText,
+                peerCount = peerItems.size,
                 latency = latency,
                 langZh = langZh
             )

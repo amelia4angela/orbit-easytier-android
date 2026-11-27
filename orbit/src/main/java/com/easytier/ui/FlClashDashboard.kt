@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -230,6 +232,8 @@ fun FlClashStatusCard(
     onClick: () -> Unit,
     nodeLabel: String,
     nodeSub: String,
+    uptime: String = "",
+    peerCount: Int = 0,
     latency: String,
     modifier: Modifier = Modifier,
     langZh: Boolean = true

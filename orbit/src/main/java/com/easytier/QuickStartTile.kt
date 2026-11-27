@@ -6,6 +6,7 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import androidx.annotation.RequiresApi
 import com.easytier.jni.EasyTierManager
 
 /**
@@ -18,6 +19,9 @@ import com.easytier.jni.EasyTierManager
  * Stop path: [EasyTierManager.stop] only needs an application context, so the
  * tunnel is torn down directly (no activity needed) and the tile flips to inactive.
  */
+// Quick Settings tiles only exist on Android 7.0+ (API 24); minSdk 23 devices
+// never instantiate this service (the tile feature is absent), so gate it for lint.
+@RequiresApi(Build.VERSION_CODES.N)
 class QuickStartTile : TileService() {
 
     companion object {

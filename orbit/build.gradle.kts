@@ -81,6 +81,8 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.8.2")
+    // Liquid Glass rendering (blur / refraction / dispersion) — skydoves/Cloudy
+    implementation("com.github.skydoves:cloudy:1.0.0-alpha01")
 
     // Lifecycle for Compose
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")

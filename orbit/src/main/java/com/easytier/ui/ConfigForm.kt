@@ -2,6 +2,7 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -264,8 +265,7 @@ fun ConfigForm(
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.weight(1f))
-                    HmToggle(
-                        label = if (config.dnsEnabled) T("开", "ON", langZh) else T("关", "OFF", langZh),
+                    HmSwitch(
                         checked = config.dnsEnabled,
                         onCheckedChange = { onConfigChange(config.copy(dnsEnabled = it)) },
                         colors = colors
@@ -586,6 +586,50 @@ internal fun HmTextField(
  * Pill-style toggle button: selected = accent filled, unselected = grey button.
  * Replaces the old checkbox so config options read as tappable chips.
  */
+/** Android Settings style sliding switch: track + sliding thumb. */
+@Composable
+fun HmSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    colors: AppColors = currentColors()
+) {
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) colors.accent else colors.inputBg,
+        animationSpec = tween(220, easing = HarmonyEasing),
+        label = "swTrack"
+    )
+    val trackBorder by animateColorAsState(
+        targetValue = if (checked) colors.accent.copy(alpha = 0.6f) else colors.inputBorder,
+        animationSpec = tween(220, easing = HarmonyEasing),
+        label = "swBorder"
+    )
+    val thumbPos by animateDpAsState(
+        targetValue = if (checked) 23.dp else 3.dp,
+        animationSpec = tween(240, easing = HarmonyEasing),
+        label = "swThumb"
+    )
+    val thumbColor = if (checked) ComposeColor.White else colors.textTertiary
+    Box(
+        modifier = modifier
+            .width(50.dp)
+            .height(30.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(trackColor)
+            .border(0.5.dp, trackBorder, RoundedCornerShape(15.dp))
+            .clickable { onCheckedChange(!checked) }
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = thumbPos)
+                .size(24.dp)
+                .clip(RoundedCornerShape(50))
+                .background(thumbColor)
+        )
+    }
+}
+
 @Composable
 fun HmToggle(
     label: String,
@@ -594,23 +638,20 @@ fun HmToggle(
     modifier: Modifier = Modifier,
     colors: AppColors = currentColors()
 ) {
-    Box(
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (checked) colors.accentContainer else colors.inputBg)
-            .border(
-                0.5.dp,
-                if (checked) colors.accent.copy(alpha = 0.45f) else colors.inputBorder,
-                RoundedCornerShape(10.dp)
-            )
+            .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 12.dp, vertical = 9.dp)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             label,
-            color = if (checked) colors.accentLight else colors.textSecondary,
+            color = colors.textSecondary,
             fontSize = 13.sp,
-            fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal
+            modifier = Modifier.weight(1f)
         )
+        Spacer(Modifier.width(10.dp))
+        HmSwitch(checked = checked, onCheckedChange = onCheckedChange, colors = colors)
     }
 }

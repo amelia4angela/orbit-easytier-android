@@ -356,44 +356,12 @@ private fun BottomNavigationBar(
                         modifier = Modifier
                             .weight(1f)
                             .clip(pillShape)
-                            // active pill = blue gradient, alpha animated so it melts in
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        colors.accentStart.copy(alpha = pillAlpha),
-                                        colors.accentEnd.copy(alpha = pillAlpha)
-                                    )
-                                )
-                            )
-                            .elasticPress { onTabSelected(tab) }
+                            // simple flat pill: solid accent, gently faded in
+                            .background(colors.accent.copy(alpha = pillAlpha))
+                            .clickable { onTabSelected(tab) }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        // glossy sheen on the upper half of the pill
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.White.copy(alpha = 0.18f * pillAlpha),
-                                            0.6f to Color.White.copy(alpha = 0.04f * pillAlpha),
-                                            1f to Color.Transparent
-                                        )
-                                    )
-                                )
-                        )
-                        // hairline rim so the pill reads as a liquid blob
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .border(
-                                    0.5.dp,
-                                    Color.White.copy(alpha = 0.25f * pillAlpha),
-                                    pillShape
-                                )
-                        )
-
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -883,8 +851,7 @@ private fun MoreTab(
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                HmToggle(
-                    label = if (logEnabled) T("已开启", "On", langZh) else T("已关闭", "Off", langZh),
+                HmSwitch(
                     checked = logEnabled,
                     onCheckedChange = { next ->
                         logEnabled = next

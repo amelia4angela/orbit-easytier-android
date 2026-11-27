@@ -779,11 +779,6 @@ private fun MoreTab(
     val colors = currentColors()
     val scrollState = rememberScrollState()
 
-    // ── Update check state ──
-    var checking by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-    var updateDialogVisible by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     // ── Language / Theme pickers + log collection ──
     var langDialogVisible by remember { mutableStateOf(false) }
@@ -958,41 +953,6 @@ private fun MoreTab(
         Spacer(Modifier.height(8.dp))
     }
 
-    // Update dialog (outside the scroll column so it overlays the whole tab)
-    UpdateDialog(
-        visible = updateDialogVisible,
-        info = updateInfo,
-        currentVersion = version,
-        langZh = langZh,
-        onDownloadApk = {
-            val info = updateInfo
-            val apkUrl = info?.apkUrl
-            if (info == null || apkUrl.isNullOrBlank()) {
-                Toast.makeText(
-                    ctx,
-                    T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
-                    Toast.LENGTH_LONG
-                ).show()
-            } else {
-                startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
-            }
-        },
-        onOpenBrowser = {
-            val url = updateInfo?.htmlUrl
-            if (!url.isNullOrBlank()) {
-                try {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                } catch (e: Exception) {
-                    Toast.makeText(
-                        ctx,
-                        T("无法打开浏览器", "Cannot open browser", langZh),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-        },
-        onDismiss = { updateDialogVisible = false }
-    )
 
     // Language picker — Apple-style radio sheet
     SettingsChoiceDialog(
@@ -1198,6 +1158,12 @@ fun AboutPage(
     }
     val colors = currentColors()
     val scrollState = rememberScrollState()
+
+    // ── Update check state (About is the single entry point) ──
+    var checking by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateDialogVisible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // Live uptime ticker
     var uptimeText by remember { mutableStateOf("") }
@@ -1494,6 +1460,42 @@ fun AboutPage(
                         Spacer(Modifier.height(8.dp))
                     }
                 }
+
+                // Update dialog — release notes + direct/browser download
+                UpdateDialog(
+                    visible = updateDialogVisible,
+                    info = updateInfo,
+                    currentVersion = version,
+                    langZh = langZh,
+                    onDownloadApk = {
+                        val info = updateInfo
+                        val apkUrl = info?.apkUrl
+                        if (info == null || apkUrl.isNullOrBlank()) {
+                            Toast.makeText(
+                                ctx,
+                                T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
+                        }
+                    },
+                    onOpenBrowser = {
+                        val url = updateInfo?.htmlUrl
+                        if (!url.isNullOrBlank()) {
+                            try {
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    ctx,
+                                    T("无法打开浏览器", "Cannot open browser", langZh),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    onDismiss = { updateDialogVisible = false }
+                )
             }
         }
     }

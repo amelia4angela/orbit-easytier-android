@@ -82,7 +82,17 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.8.2")
     // Liquid Glass rendering (blur / refraction / dispersion) — skydoves/Cloudy
-    implementation("com.github.skydoves:cloudy:1.0.0-alpha01")
+    //
+    // DISABLED: cloudy 1.0.0-alpha01 is compiled against Kotlin 2.4.0 + Compose 1.11.x and
+    // carries `minCompileSdk=37` AAR metadata. This project is pinned to Kotlin 1.9.22 /
+    // Compose BOM 2024.02.00 / AGP 8.2.2 / compileSdk 34, so resolving it fails the build at
+    // `checkDebugAarMetadata` (27 AAR-metadata violations) and its 2.4 Kotlin metadata is
+    // unreadable by the 1.9.22 compiler anyway. Every published cloudy release (0.1.x -> 1.0.0)
+    // needs a Kotlin 2.x toolchain. The glass layer therefore renders with Compose-native
+    // primitives (Modifier.blur / RenderEffect on API 31+) behind the same
+    // `Modifier.glassSurface(level, radius, intensity)` API, so the library can be dropped back
+    // in unchanged once the toolchain is upgraded.
+    // implementation("com.github.skydoves:cloudy:1.0.0-alpha01")
 
     // Lifecycle for Compose
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")

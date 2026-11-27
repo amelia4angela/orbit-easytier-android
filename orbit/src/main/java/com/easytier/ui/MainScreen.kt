@@ -59,7 +59,7 @@ import java.io.File
 private enum class Tab { STATUS, CONFIG, LOGS, MORE }
 
 /** Settings sub-pages, pushed onto a small back stack (never exits the app). */
-private enum class SettingsPage { GENERAL, PERMISSIONS, THEME, ABOUT, PRIVACY }
+private enum class SettingsPage { GENERAL, PERMISSIONS, THEME, ABOUT, PRIVACY, SHOWCASE }
 
 // ═══════════════════════════════════════════════════
 //  MainScreen — 3-tab layout with bottom navigation
@@ -272,6 +272,13 @@ fun MainScreen(
                                 closePage()
                             }
                         )
+                        // 临时入口：液态玻璃设计系统演示页（阶段 3-5）。返回走 pageStack。
+                        SettingsPage.SHOWCASE -> com.easytier.ui.glass.GlassShowcase(
+                            langZh = langZh,
+                            isDarkTheme = isDarkTheme,
+                            onToggleTheme = onToggleTheme,
+                            onBack = { closePage() }
+                        )
                     }
                 } else {
                     AnimatedContent(
@@ -323,6 +330,7 @@ fun MainScreen(
                         onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
                         onNavigateToTheme = { openPage(SettingsPage.THEME) },
                         onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
+                        onNavigateToShowcase = { openPage(SettingsPage.SHOWCASE) },
                         onConfigServer = onConfigServer,
                         onToggleConnection = onToggleConnection,
                         onOpenLogs = { currentTab = Tab.LOGS },
@@ -982,6 +990,7 @@ private fun MoreTab(
     onNavigateToGeneral: () -> Unit,
     onNavigateToTheme: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onNavigateToShowcase: () -> Unit,
     onConfigServer: () -> Unit,
     onToggleConnection: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
@@ -1081,6 +1090,15 @@ private fun MoreTab(
             value = themeValue,
             colors = colors,
             onClick = { onNavigateToTheme() }
+        )
+
+        // Glass Showcase — temporary entry for the Liquid Glass phase 3-5 work.
+        SettingsNavRow(
+            icon = "✨",
+            title = "Glass Showcase",
+            subtitle = T("液态玻璃设计系统演示（临时）", "Liquid glass design system demo (temp)", langZh),
+            colors = colors,
+            onClick = { onNavigateToShowcase() }
         )
 
         // About Card (clickable → navigates to AboutPage)

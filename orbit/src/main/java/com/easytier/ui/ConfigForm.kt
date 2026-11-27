@@ -279,7 +279,7 @@ fun ConfigForm(
             }
         }
 
-        // ── DNS Push (own card, right after Basic Config) ──
+        // ── DNS Config (own card, right after Basic Config) ──
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -292,7 +292,7 @@ fun ConfigForm(
                     Text("🛡", fontSize = 16.sp)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        T("DNS 下发", "DNS Push", langZh),
+                        T("DNS 配置", "DNS Config", langZh),
                         color = colors.textPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
@@ -371,20 +371,33 @@ fun ConfigForm(
                             onCheckedChange = { onConfigChange(config.copy(noTun = it)) },
                             label = T("无 TUN 模式", "No TUN Mode", langZh),
                             modifier = Modifier.fillMaxWidth(),
-                            colors = colors
+                            colors = colors,
+                            hint = T(
+                                "不建虚拟网卡，仅应用内组网，更省电",
+                                "In-app mesh only, no TUN, saves battery",
+                                langZh
+                            )
                         )
 
                         // Network
                         SectionLabel(T("网络", "Network", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.disableIpv6, onCheckedChange = { onConfigChange(config.copy(disableIpv6 = it)) }, label = T("禁用 IPv6", "Disable IPv6", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.disableIpv6,
+                                onCheckedChange = { onConfigChange(config.copy(disableIpv6 = it)) },
+                                label = T("禁用 IPv6", "Disable IPv6", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("隧道内不传 IPv6 流量", "No IPv6 traffic inside the tunnel", langZh)
+                            )
                         }
                         HmTextField(
                             value = config.bindDevice,
                             onValueChange = { onConfigChange(config.copy(bindDevice = it)) },
                             label = T("绑定网卡", "Bind Device", langZh),
                             placeholder = T("例如 eth0, wlan0", "e.g. eth0, wlan0", langZh),
-                            colors = colors
+                            colors = colors,
+                            hint = T("只从指定网卡收发，留空自动", "Bind to a NIC; empty = auto", langZh)
                         )
 
                         // P2P
@@ -394,56 +407,145 @@ fun ConfigForm(
                             onCheckedChange = { onConfigChange(config.copy(aggressiveP2p = it)) },
                             label = T("激进 P2P", "Aggressive P2P", langZh),
                             modifier = Modifier.fillMaxWidth(),
-                            colors = colors
-                        )
-                        Text(
-                            T(
-                                "更快建立 P2P 直连（立即并发打洞）；若出现连不上的情况可关闭",
-                                "Faster P2P direct links (immediate parallel hole punching); turn off if connecting fails",
+                            colors = colors,
+                            hint = T(
+                                "立即并发打洞优先直连，连不上可关",
+                                "Punch immediately for direct links",
                                 langZh
-                            ),
-                            color = colors.textTertiary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                            modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
+                            )
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.disableP2p, onCheckedChange = { onConfigChange(config.copy(disableP2p = it)) }, label = T("禁用 P2P", "Disable P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.p2pOnly, onCheckedChange = { onConfigChange(config.copy(p2pOnly = it)) }, label = T("仅 P2P", "P2P Only", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.disableP2p,
+                                onCheckedChange = { onConfigChange(config.copy(disableP2p = it)) },
+                                label = T("禁用 P2P", "Disable P2P", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("全部走中继，穿透差时保连通", "Relay everything when punching fails", langZh)
+                            )
+                            HmToggle(
+                                checked = config.p2pOnly,
+                                onCheckedChange = { onConfigChange(config.copy(p2pOnly = it)) },
+                                label = T("仅 P2P", "P2P Only", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("只允许直连不中继", "Direct links only, no relay", langZh)
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.lazyP2p, onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) }, label = T("延迟 P2P", "Lazy P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.needP2p, onCheckedChange = { onConfigChange(config.copy(needP2p = it)) }, label = T("需要 P2P", "Need P2P", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.lazyP2p,
+                                onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) },
+                                label = T("延迟 P2P", "Lazy P2P", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("先中继再尝试打洞，省电", "Relay first, punch later", langZh)
+                            )
+                            HmToggle(
+                                checked = config.needP2p,
+                                onCheckedChange = { onConfigChange(config.copy(needP2p = it)) },
+                                label = T("需要 P2P", "Need P2P", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("强制要求直连", "Require a direct peer link", langZh)
+                            )
                         }
 
                         // NAT / Hole Punch
                         SectionLabel(T("NAT / 打洞", "NAT / Hole Punch", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.disableTcpHp, onCheckedChange = { onConfigChange(config.copy(disableTcpHp = it)) }, label = T("禁用 TCP 打洞", "Disable TCP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.disableUdpHp, onCheckedChange = { onConfigChange(config.copy(disableUdpHp = it)) }, label = T("禁用 UDP 打洞", "Disable UDP HP", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.disableTcpHp,
+                                onCheckedChange = { onConfigChange(config.copy(disableTcpHp = it)) },
+                                label = T("禁用 TCP 打洞", "Disable TCP HP", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("关闭 TCP NAT 穿透", "Disable TCP hole punching", langZh)
+                            )
+                            HmToggle(
+                                checked = config.disableUdpHp,
+                                onCheckedChange = { onConfigChange(config.copy(disableUdpHp = it)) },
+                                label = T("禁用 UDP 打洞", "Disable UDP HP", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("关闭 UDP NAT 穿透", "Disable UDP hole punching", langZh)
+                            )
                         }
-                        HmToggle(checked = config.disableSymHp, onCheckedChange = { onConfigChange(config.copy(disableSymHp = it)) }, label = T("禁用 Sym 打洞", "Disable Sym HP", langZh), colors = colors)
+                        HmToggle(
+                            checked = config.disableSymHp,
+                            onCheckedChange = { onConfigChange(config.copy(disableSymHp = it)) },
+                            label = T("禁用 Sym 打洞", "Disable Sym HP", langZh),
+                            colors = colors,
+                            hint = T("关闭对称 NAT 穿透", "Disable symmetric NAT punching", langZh)
+                        )
 
                         // Proxy / KCP / QUIC
                         SectionLabel(T("代理 / KCP / QUIC", "Proxy / KCP / QUIC", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.enableKcpProxy, onCheckedChange = { onConfigChange(config.copy(enableKcpProxy = it)) }, label = "KCP Proxy", modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.disableKcpInput, onCheckedChange = { onConfigChange(config.copy(disableKcpInput = it)) }, label = T("禁用 KCP 入站", "Disable KCP In", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.enableKcpProxy,
+                                onCheckedChange = { onConfigChange(config.copy(enableKcpProxy = it)) },
+                                label = "KCP Proxy",
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("为组网提供 KCP 加速", "KCP acceleration for the mesh", langZh)
+                            )
+                            HmToggle(
+                                checked = config.disableKcpInput,
+                                onCheckedChange = { onConfigChange(config.copy(disableKcpInput = it)) },
+                                label = T("禁用 KCP 入站", "Disable KCP In", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("不接受 KCP 加速连接", "Refuse KCP inbound", langZh)
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.enableQuicProxy, onCheckedChange = { onConfigChange(config.copy(enableQuicProxy = it)) }, label = "QUIC Proxy", modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.disableQuicInput, onCheckedChange = { onConfigChange(config.copy(disableQuicInput = it)) }, label = T("禁用 QUIC 入站", "Disable QUIC In", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.enableQuicProxy,
+                                onCheckedChange = { onConfigChange(config.copy(enableQuicProxy = it)) },
+                                label = "QUIC Proxy",
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("为组网提供 QUIC 加速", "QUIC acceleration for the mesh", langZh)
+                            )
+                            HmToggle(
+                                checked = config.disableQuicInput,
+                                onCheckedChange = { onConfigChange(config.copy(disableQuicInput = it)) },
+                                label = T("禁用 QUIC 入站", "Disable QUIC In", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("不接受 QUIC 加速连接", "Refuse QUIC inbound", langZh)
+                            )
                         }
-                        HmToggle(checked = config.proxyForwardBySystem, onCheckedChange = { onConfigChange(config.copy(proxyForwardBySystem = it)) }, label = T("系统代理转发", "System Proxy", langZh), colors = colors)
-                        HmToggle(checked = config.relayAllRpc, onCheckedChange = { onConfigChange(config.copy(relayAllRpc = it)) }, label = T("中继所有节点 RPC", "Relay All RPC", langZh), colors = colors)
-                        HmToggle(checked = config.exitNode, onCheckedChange = { onConfigChange(config.copy(exitNode = it)) }, label = T("出口节点模式", "Exit Node", langZh), colors = colors)
+                        HmToggle(
+                            checked = config.proxyForwardBySystem,
+                            onCheckedChange = { onConfigChange(config.copy(proxyForwardBySystem = it)) },
+                            label = T("系统代理转发", "System Proxy", langZh),
+                            colors = colors,
+                            hint = T("把系统代理流量引入隧道", "Route system proxy into tunnel", langZh)
+                        )
+                        HmToggle(
+                            checked = config.relayAllRpc,
+                            onCheckedChange = { onConfigChange(config.copy(relayAllRpc = it)) },
+                            label = T("中继所有节点 RPC", "Relay All RPC", langZh),
+                            colors = colors,
+                            hint = T("节点发现经中继，NAT 后发现失败时开", "Discover peers via relay", langZh)
+                        )
+                        HmToggle(
+                            checked = config.exitNode,
+                            onCheckedChange = { onConfigChange(config.copy(exitNode = it)) },
+                            label = T("出口节点模式", "Exit Node", langZh),
+                            colors = colors,
+                            hint = T("本机作为流量出口", "Use this device as exit node", langZh)
+                        )
 
                         HmTextField(
                             value = config.proxyNetworks,
                             onValueChange = { onConfigChange(config.copy(proxyNetworks = it)) },
                             label = T("代理网络 CIDR", "Proxy CIDR", langZh),
                             placeholder = "10.0.0.0/8, 192.168.1.0/24",
-                            colors = colors
+                            colors = colors,
+                            hint = T("只代理这些网段，留空全部", "Proxy only these subnets; empty = all", langZh)
                         )
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -454,16 +556,18 @@ fun ConfigForm(
                                 placeholder = "1080",
                                 modifier = Modifier.weight(1f),
                                 keyboardType = KeyboardType.Number,
-                                colors = colors
+                                colors = colors,
+                                hint = T("为组网提供 SOCKS5 代理端口", "SOCKS5 proxy for the mesh", langZh)
                             )
                             HmTextField(
                                 value = config.mtu,
                                 onValueChange = { onConfigChange(config.copy(mtu = it)) },
                                 label = "MTU",
                                 placeholder = T("0=自动", "0=Auto", langZh),
-                                modifier = Modifier.width(100.dp),
+                                modifier = Modifier.weight(1f),
                                 keyboardType = KeyboardType.Number,
-                                colors = colors
+                                colors = colors,
+                                hint = T("隧道最大包长，0=自动", "Max packet size; 0 = auto", langZh)
                             )
                         }
 
@@ -472,24 +576,58 @@ fun ConfigForm(
                             onValueChange = { onConfigChange(config.copy(portForward = it)) },
                             label = T("端口转发", "Port Forward", langZh),
                             placeholder = "udp://0.0.0.0:12345/10.126.126.1:23456",
-                            colors = colors
+                            colors = colors,
+                            hint = T("把本机端口映射给组网设备", "Forward local ports to the mesh", langZh)
                         )
 
                         // Performance
                         SectionLabel(T("性能", "Performance", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.latencyFirst, onCheckedChange = { onConfigChange(config.copy(latencyFirst = it)) }, label = T("延迟优先", "Latency First", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.multiThread, onCheckedChange = { onConfigChange(config.copy(multiThread = it)) }, label = T("多线程", "Multi-Thread", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.latencyFirst,
+                                onCheckedChange = { onConfigChange(config.copy(latencyFirst = it)) },
+                                label = T("延迟优先", "Latency First", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("优先选低延迟链路", "Prefer low-latency paths", langZh)
+                            )
+                            HmToggle(
+                                checked = config.multiThread,
+                                onCheckedChange = { onConfigChange(config.copy(multiThread = it)) },
+                                label = T("多线程", "Multi-Thread", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("多线程收发，提升吞吐", "Multi-threaded I/O, more throughput", langZh)
+                            )
                         }
-                        HmToggle(checked = config.useSmoltcp, onCheckedChange = { onConfigChange(config.copy(useSmoltcp = it)) }, label = "smoltcp", colors = colors)
+                        HmToggle(
+                            checked = config.useSmoltcp,
+                            onCheckedChange = { onConfigChange(config.copy(useSmoltcp = it)) },
+                            label = "smoltcp",
+                            colors = colors,
+                            hint = T("用户态 TCP 栈，减少内核开销", "User-space TCP stack", langZh)
+                        )
 
                         // Security
                         SectionLabel(T("安全", "Security", langZh), colors)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(checked = config.disableEncrypt, onCheckedChange = { onConfigChange(config.copy(disableEncrypt = it)) }, label = T("禁用加密", "Disable Encrypt", langZh), modifier = Modifier.weight(1f), colors = colors)
-                            HmToggle(checked = config.privateMode, onCheckedChange = { onConfigChange(config.copy(privateMode = it)) }, label = T("私密模式", "Private Mode", langZh), modifier = Modifier.weight(1f), colors = colors)
+                            HmToggle(
+                                checked = config.disableEncrypt,
+                                onCheckedChange = { onConfigChange(config.copy(disableEncrypt = it)) },
+                                label = T("禁用加密", "Disable Encrypt", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("关闭隧道加密，更快但不安全", "No tunnel encryption (insecure)", langZh)
+                            )
+                            HmToggle(
+                                checked = config.privateMode,
+                                onCheckedChange = { onConfigChange(config.copy(privateMode = it)) },
+                                label = T("私密模式", "Private Mode", langZh),
+                                modifier = Modifier.weight(1f),
+                                colors = colors,
+                                hint = T("不在公网暴露节点信息", "Hide node info from public", langZh)
+                            )
                         }
-                        HmToggle(checked = config.acceptDns, onCheckedChange = { onConfigChange(config.copy(acceptDns = it)) }, label = T("接受 DNS", "Accept DNS", langZh), colors = colors)
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             HmTextField(
@@ -498,7 +636,8 @@ fun ConfigForm(
                                 label = T("加密算法", "Encrypt Algo", langZh),
                                 placeholder = T("留空=自动", "empty=auto", langZh),
                                 modifier = Modifier.weight(1f),
-                                colors = colors
+                                colors = colors,
+                                hint = T("留空自动，如 aes-256-gcm", "Empty = auto, e.g. aes-256-gcm", langZh)
                             )
                             HmTextField(
                                 value = config.compression,
@@ -506,7 +645,8 @@ fun ConfigForm(
                                 label = T("压缩", "Compression", langZh),
                                 placeholder = "none / zstd",
                                 modifier = Modifier.weight(1f),
-                                colors = colors
+                                colors = colors,
+                                hint = T("留空不压缩，可选 zstd", "Empty = none; zstd available", langZh)
                             )
                         }
 
@@ -517,7 +657,8 @@ fun ConfigForm(
                             onValueChange = { onConfigChange(config.copy(exitNodes = it)) },
                             label = T("出口节点 VIP", "Exit Node VIPs", langZh),
                             placeholder = "10.0.0.2, 10.0.0.3",
-                            colors = colors
+                            colors = colors,
+                            hint = T("指定走哪些出口节点，留空不限制", "Exit nodes to use; empty = any", langZh)
                         )
                     }
                 }
@@ -566,7 +707,8 @@ internal fun HmTextField(
     modifier: Modifier = Modifier,
     password: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
-    colors: AppColors
+    colors: AppColors,
+    hint: String? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -619,6 +761,16 @@ internal fun HmTextField(
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (hint != null) {
+            Text(
+                text = hint,
+                color = colors.textTertiary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                maxLines = 2,
+                modifier = Modifier.padding(start = 2.dp, top = 3.dp)
             )
         }
     }
@@ -678,7 +830,8 @@ fun HmToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    colors: AppColors = currentColors()
+    colors: AppColors = currentColors(),
+    hint: String? = null
 ) {
     Row(
         modifier = modifier
@@ -687,12 +840,23 @@ fun HmToggle(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            label,
-            color = colors.textSecondary,
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                label,
+                color = colors.textSecondary,
+                fontSize = 13.sp
+            )
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    color = colors.textTertiary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
         Spacer(Modifier.width(10.dp))
         HmSwitch(checked = checked, onCheckedChange = onCheckedChange, colors = colors)
     }

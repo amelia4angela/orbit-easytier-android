@@ -910,7 +910,7 @@ object TomlUtils {
         if (s.compression.isNotEmpty()) out.add("压缩")
         if (s.proxyNetworks.isNotEmpty()) out.add("代理网段")
         if (s.exitNodes.isNotEmpty()) out.add("出口节点 VIP")
-        if (s.dnsServer.isNotEmpty()) out.add("DNS")
+        if (s.dnsEnabled && s.dnsServer.isNotEmpty()) out.add("DNS")
         return out
     }
 }

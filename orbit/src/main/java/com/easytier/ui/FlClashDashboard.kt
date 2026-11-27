@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -232,8 +230,6 @@ fun FlClashStatusCard(
     onClick: () -> Unit,
     nodeLabel: String,
     nodeSub: String,
-    rxSpeed: String,
-    txSpeed: String,
     latency: String,
     modifier: Modifier = Modifier,
     langZh: Boolean = true
@@ -429,17 +425,17 @@ fun FlClashStatusCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             CardStatItem(
-                icon = Icons.Rounded.ArrowDownward,
-                label = T("下载", "Download", langZh),
-                value = rxSpeed.ifEmpty { "—" },
+                icon = Icons.Rounded.Lan,
+                label = T("节点", "Peers", langZh),
+                value = "$peerCount",
                 accent = statusBase,
                 colors = colors,
                 modifier = Modifier.weight(1f)
             )
             CardStatItem(
-                icon = Icons.Rounded.ArrowUpward,
-                label = T("上传", "Upload", langZh),
-                value = txSpeed.ifEmpty { "—" },
+                icon = Icons.Rounded.Schedule,
+                label = T("时长", "Uptime", langZh),
+                value = uptime.ifEmpty { "—" },
                 accent = statusBase,
                 colors = colors,
                 modifier = Modifier.weight(1f)
@@ -489,47 +485,7 @@ private fun CardStatItem(
     }
 }
 
-/**
- * Two side-by-side speed cards (up / down), mirroring FlClash's "Network
- * speed" section: running total on top, a waveform of the recent samples in
- * the middle, current speed underneath.
- */
-@Composable
-fun SpeedStatRow(
-    rxSpeed: String,
-    txSpeed: String,
-    rxTotal: String,
-    txTotal: String,
-    rxHistory: List<Float>,
-    txHistory: List<Float>,
-    modifier: Modifier = Modifier,
-    langZh: Boolean = true
-) {
-    val colors = currentColors()
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        SpeedWaveCard(
-            label = T("总上传", "Total Up", langZh),
-            total = txTotal,
-            speed = txSpeed,
-            history = txHistory,
-            waveColor = colors.statusGood,
-            colors = colors,
-            modifier = Modifier.weight(1f)
-        )
-        SpeedWaveCard(
-            label = T("总下载", "Total Down", langZh),
-            total = rxTotal,
-            speed = rxSpeed,
-            history = rxHistory,
-            waveColor = colors.accent,
-            colors = colors,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
+
 
 /** Smoothed line + area fill for one waveform sample list, in pixels. */
 private class WavePaths(val line: Path, val fill: Path)
@@ -680,17 +636,6 @@ private fun SpeedWaveCard(
 }
 
 /** Parse "1.2 MB/s" / "350 KB/s" style strings into a Float for sparklines. */
-fun parseSpeedValue(s: String): Float {
-    val num = s.split(" ").firstOrNull()?.toFloatOrNull() ?: return 0f
-    val unit = s.split(" ").getOrElse(1) { "" }.uppercase()
-    val mult = when {
-        unit.startsWith("G") -> 1024f * 1024f
-        unit.startsWith("M") -> 1024f
-        unit.startsWith("K") -> 1f
-        else -> 1f / 1024f
-    }
-    return num * mult
-}
 
 
 /** FlClash glass card: soft shadow + rounded surface + inner light hairline. */

@@ -659,35 +659,6 @@ private fun StatusTab(
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
                       connectionState.status == ConnectionStatus.NO_TUN
 
-    // ── Speed history for the waveforms (one list per direction, 40 pts) ──
-    val rxHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
-    val txHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
-    val rxSpeed = myNodeItem?.rxSpeed ?: ""
-    val txSpeed = myNodeItem?.txSpeed ?: ""
-
-    LaunchedEffect(rxSpeed) {
-        val v = parseSpeedValue(rxSpeed)
-        if (v > 0f) {
-            rxHistory.add(v)
-            if (rxHistory.size > 40) rxHistory.removeAt(0)
-        }
-    }
-    LaunchedEffect(txSpeed) {
-        val v = parseSpeedValue(txSpeed)
-        if (v > 0f) {
-            txHistory.add(v)
-            if (txHistory.size > 40) txHistory.removeAt(0)
-        }
-    }
-
-    fun fmtBytes(b: Long): String {
-        val units = arrayOf("B", "KB", "MB", "GB", "TB")
-        var v = b.toDouble()
-        var i = 0
-        while (v >= 1024 && i < units.size - 1) { v /= 1024; i++ }
-        return "%.1f %s".format(v, units[i])
-    }
-
     val latency = myNodeItem?.let {
         if (it.latencyUs > 0) "${it.latencyUs / 1000} ms" else ""
     } ?: ""
@@ -705,24 +676,9 @@ private fun StatusTab(
                 onClick = onToggleConnection,
                 nodeLabel = myNodeItem?.ip ?: connectionState.subLabel,
                 nodeSub = myNodeItem?.let { "${it.hostname}  ·  ${it.protocol}" } ?: "",
-                rxSpeed = rxSpeed,
-                txSpeed = txSpeed,
                 latency = latency,
                 langZh = langZh
             )
-
-            // ── Speed cards (only when running) ──
-            if (isConnected && myNodeItem != null) {
-                SpeedStatRow(
-                    rxSpeed = rxSpeed,
-                    txSpeed = txSpeed,
-                    rxTotal = fmtBytes(myNodeItem.rxBytes),
-                    txTotal = fmtBytes(myNodeItem.txBytes),
-                    rxHistory = rxHistory,
-                    txHistory = txHistory,
-                    langZh = langZh
-                )
-            }
 
             PeerInfoSection(
                 myNode = myNodeItem,

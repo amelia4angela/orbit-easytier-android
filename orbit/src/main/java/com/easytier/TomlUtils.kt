@@ -13,9 +13,6 @@ import org.json.JSONObject
  */
 object TomlUtils {
 
-    /** Sentinel value meaning "user hasn't filled this field yet" */
-    const val TOML_FIELD_EMPTY = ""
-
     // ═══════════════════════════════════════════════
     //  ConfigState ↔ JSON
     // ═══════════════════════════════════════════════
@@ -37,7 +34,6 @@ object TomlUtils {
         j.put("disableP2p", s.disableP2p)
         j.put("p2pOnly", s.p2pOnly)
         j.put("lazyP2p", s.lazyP2p)
-        j.put("needP2p", s.needP2p)
         j.put("aggressiveP2p", s.aggressiveP2p)
         j.put("disableTcpHp", s.disableTcpHp)
         j.put("disableUdpHp", s.disableUdpHp)
@@ -164,9 +160,10 @@ object TomlUtils {
             disableP2p = j.optBoolean("disableP2p"),
             p2pOnly = j.optBoolean("p2pOnly"),
             lazyP2p = j.optBoolean("lazyP2p"),
-            needP2p = j.optBoolean("needP2p"),
-            // 旧配置没有这个字段 → optBoolean 默认 true（激进）
-            aggressiveP2p = j.optBoolean("aggressiveP2p", true),
+            // 旧配置：只有 needP2p（激进开关上线前导出的）时沿用它；两者都没有则默认激进。
+            // 字段已合并，needP2p 只在读旧 JSON 时兼容，不再写出。
+            aggressiveP2p = if (j.has("aggressiveP2p")) j.optBoolean("aggressiveP2p", true)
+                            else j.optBoolean("needP2p", true),
             disableTcpHp = j.optBoolean("disableTcpHp"),
             disableUdpHp = j.optBoolean("disableUdpHp"),
             disableSymHp = j.optBoolean("disableSymHp"),
@@ -210,139 +207,227 @@ object TomlUtils {
     private fun formatHost(addr: String): String =
         if (addr.contains(':') && !addr.startsWith("[")) "[$addr]" else addr
 
-    /** Build TOML string from [ConfigState] for the EasyTier daemon. */
-    fun buildToml(s: ConfigState): String {
-        val sb = StringBuilder()
+    /**
+     * 1:1 布尔开关：ConfigState 字段 ↔ EasyTier 2.6.4 `[flags]` 键。
+     *
+     * 键名取自 easytier 2.6.4 的 `easytier/src/proto/common.proto`
+     * (message FlagsInConfig)，序列化形态见同版本 `easytier/src/common/config.rs`
+     * 里的 `Config { flags: Option<serde_json::Map<..>> }` + `gen_flags()`：
+     * 开关只能写在 `[flags]` 段，写在顶层会被 serde 静默忽略。
+     *
+     * 只输出开启的项（与官方 `dump()` 一致：等于默认值的项不写），
+     * 除了 multi_thread —— 它的核心默认是 true，写 true 只是显式化。
+     */
+    private class BoolFlag(
+        val key: String,
+        val name: String,
+        val read: (ConfigState) -> Boolean,
+        val write: (ConfigState, Boolean) -> ConfigState
+    )
 
-        val networkName = escapeToml(s.networkName.ifEmpty { TOML_FIELD_EMPTY })
-        val networkSecret = escapeToml(s.secret.ifEmpty { TOML_FIELD_EMPTY })
-        val server = s.server.ifEmpty { TOML_FIELD_EMPTY }
-        val port = s.port.ifEmpty { TOML_FIELD_EMPTY }
-        val ipAddr = s.ipAddress.ifEmpty { TOML_FIELD_EMPTY }
-        val ipPrefix = s.ipPrefix.ifEmpty { "24" }
-        val peerUri = if (server != TOML_FIELD_EMPTY && port != TOML_FIELD_EMPTY)
-            "tcp://$server:$port"
-        else
-            "tcp://$TOML_FIELD_EMPTY"
-        val instanceName = escapeToml(s.instanceName.ifEmpty { "default" })
-        val hostname = escapeToml(s.hostname.ifEmpty { TOML_FIELD_EMPTY })
+    private val BOOL_FLAGS: List<BoolFlag> = listOf(
+        BoolFlag("no_tun", "noTun", read = { it.noTun }, write = { c, b -> c.copy(noTun = b) }),
+        BoolFlag("disable_p2p", "disableP2p", read = { it.disableP2p }, write = { c, b -> c.copy(disableP2p = b) }),
+        BoolFlag("p2p_only", "p2pOnly", read = { it.p2pOnly }, write = { c, b -> c.copy(p2pOnly = b) }),
+        BoolFlag("lazy_p2p", "lazyP2p", read = { it.lazyP2p }, write = { c, b -> c.copy(lazyP2p = b) }),
+        BoolFlag("disable_tcp_hole_punching", "disableTcpHp", read = { it.disableTcpHp }, write = { c, b -> c.copy(disableTcpHp = b) }),
+        BoolFlag("disable_udp_hole_punching", "disableUdpHp", read = { it.disableUdpHp }, write = { c, b -> c.copy(disableUdpHp = b) }),
+        BoolFlag("disable_sym_hole_punching", "disableSymHp", read = { it.disableSymHp }, write = { c, b -> c.copy(disableSymHp = b) }),
+        BoolFlag("enable_kcp_proxy", "enableKcpProxy", read = { it.enableKcpProxy }, write = { c, b -> c.copy(enableKcpProxy = b) }),
+        BoolFlag("disable_kcp_input", "disableKcpInput", read = { it.disableKcpInput }, write = { c, b -> c.copy(disableKcpInput = b) }),
+        BoolFlag("enable_quic_proxy", "enableQuicProxy", read = { it.enableQuicProxy }, write = { c, b -> c.copy(enableQuicProxy = b) }),
+        BoolFlag("disable_quic_input", "disableQuicInput", read = { it.disableQuicInput }, write = { c, b -> c.copy(disableQuicInput = b) }),
+        BoolFlag("proxy_forward_by_system", "proxyForwardBySystem", read = { it.proxyForwardBySystem }, write = { c, b -> c.copy(proxyForwardBySystem = b) }),
+        BoolFlag("relay_all_peer_rpc", "relayAllRpc", read = { it.relayAllRpc }, write = { c, b -> c.copy(relayAllRpc = b) }),
+        BoolFlag("enable_exit_node", "exitNode", read = { it.exitNode }, write = { c, b -> c.copy(exitNode = b) }),
+        BoolFlag("latency_first", "latencyFirst", read = { it.latencyFirst }, write = { c, b -> c.copy(latencyFirst = b) }),
+        // 核心默认 multi_thread = true，打开时显式写一次（关闭则保持核心默认）
+        BoolFlag("multi_thread", "multiThread", read = { it.multiThread }, write = { c, b -> c.copy(multiThread = b) }),
+        BoolFlag("use_smoltcp", "useSmoltcp", read = { it.useSmoltcp }, write = { c, b -> c.copy(useSmoltcp = b) }),
+        BoolFlag("private_mode", "privateMode", read = { it.privateMode }, write = { c, b -> c.copy(privateMode = b) }),
+        BoolFlag("accept_dns", "acceptDns", read = { it.acceptDns }, write = { c, b -> c.copy(acceptDns = b) })
+    )
 
-        sb.append("instance_name = \"$instanceName\"\n")
-        if (hostname.isNotEmpty()) sb.append("hostname = \"$hostname\"\n")
-        sb.append("ipv4 = \"$ipAddr/$ipPrefix\"\n")
-        sb.append("dhcp = ${s.dhcp}\n\n")
+    /** ConfigState / JSON 字段名 → 开关定义（导入时用）。 */
+    private val BOOL_FLAG_BY_NAME: Map<String, BoolFlag> = BOOL_FLAGS.associateBy { it.name }
 
-        sb.append("[network_identity]\n")
-        sb.append("network_name = \"$networkName\"\n")
-        sb.append("network_secret = \"$networkSecret\"\n\n")
+    /** 激进 P2P 打开时要压掉的「软」P2P 开关（不输出，交给核心默认）。 */
+    private val P2P_SOFT_KEYS = setOf(
+        "lazy_p2p", "disable_tcp_hole_punching", "disable_udp_hole_punching", "disable_sym_hole_punching"
+    )
 
+    /** `a, b ,c` → `[a, b, c]`（丢掉空项）。 */
+    private fun splitList(v: String): List<String> =
+        v.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** 官方顶层 `socks5_proxy` 是 URL；UI 里填的是端口（如 1080）。 */
+    private fun socks5ProxyUrl(v: String): String? {
+        val t = v.trim()
+        if (t.isEmpty()) return null
+        if (t.contains("://")) return t
+        val port = t.filter { it.isDigit() }
+        return if (port.isEmpty()) null else "socks5://0.0.0.0:$port"
+    }
+
+    /** 反向：`socks5://0.0.0.0:1080` → `1080`（UI 只编辑端口）。 */
+    private fun socks5PortValue(v: String): String {
+        val t = v.trim()
+        if (!t.contains("://")) return t
+        return t.substringAfterLast(':').filter { it.isDigit() }
+    }
+
+    /**
+     * UI 里是 CLI 写法 `proto://bind/dst`（例：`udp://0.0.0.0:12345/10.126.126.1:23456`），
+     * 官方 toml 是 `[[port_forward]] bind_addr / dst_addr / proto` 三个字段。
+     */
+    private fun parsePortForward(v: String): Triple<String, String, String>? {
+        val t = v.trim()
+        val sep = t.indexOf("://")
+        if (sep <= 0) return null
+        val proto = t.substring(0, sep).lowercase()
+        if (proto != "tcp" && proto != "udp") return null
+        val rest = t.substring(sep + 3)
+        val slash = rest.lastIndexOf('/')
+        if (slash <= 0 || slash == rest.length - 1) return null
+        val bind = rest.substring(0, slash).trim()
+        val dst = rest.substring(slash + 1).trim()
+        if (bind.isEmpty() || dst.isEmpty()) return null
+        return Triple(proto, bind, dst)
+    }
+
+    /**
+     * 官方 `[flags] data_compress_algo` 是 CompressionAlgoPb 枚举的整数值
+     * （proto: Invalid=0, None=1, Zstd=2）。写成 `"zstd"` 字符串会让核心
+     * `serde_json::from_value(..).unwrap()` panic，所以这里必须给整数。
+     */
+    private fun compressionFlag(v: String): Int? = when (v.trim().lowercase()) {
+        "zstd" -> 2
+        else -> null            // ""/none/未识别 → 不写，用核心默认（None）
+    }
+
+    /** 有效 peer 列表：结构化节点优先，否则回退 server/port + extraServers。空 uri 不输出。 */
+    private fun peerUris(s: ConfigState): List<String> {
+        val out = mutableListOf<String>()
         if (s.nodes.isNotEmpty()) {
-            // Structured node list (new UI)
             for (n in s.nodes) {
                 val addr = n.address.trim()
                 val p = n.port.trim()
                 if (addr.isEmpty() || p.isEmpty()) continue
-                val uri = "${n.protocol.ifEmpty { "tcp" }}://${formatHost(addr)}:$p"
-                sb.append("[[peer]]\n")
-                sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+                out.add("${n.protocol.ifEmpty { "tcp" }}://${formatHost(addr)}:$p")
             }
         } else {
-            sb.append("[[peer]]\n")
-            sb.append("uri = \"$peerUri\"\n\n")
-
-            // Additional peers (multiple servers)
+            val server = s.server.trim()
+            val port = s.port.trim()
+            if (server.isNotEmpty() && port.isNotEmpty())
+                out.add("tcp://${formatHost(server)}:$port")
             for (extra in s.extraServers) {
                 val uri = extra.trim()
-                if (uri.isEmpty()) continue
-                sb.append("[[peer]]\n")
-                sb.append("uri = \"${escapeToml(uri)}\"\n\n")
+                if (uri.isNotEmpty()) out.add(uri)
             }
         }
+        return out
+    }
 
-        if (s.disableIpv6) sb.append("disable_ipv6 = true\n")
-        if (s.noTun) sb.append("no_tun = true\n")
-        if (s.bindDevice.isNotEmpty()) sb.append("bind_device = \"${escapeToml(s.bindDevice)}\"\n")
+    /**
+     * `[flags]` 段内容（官方 2.6.4 FlagsInConfig）。返回 键 → 已格式化的 TOML 右值。
+     *
+     * 顺序敏感的三个特殊项：
+     *  - `enable_ipv6` / `enable_encryption` 是正向开关，UI 存的是「禁用」，需要取反；
+     *  - `bind_device` 在 2.6.4 是布尔（把 socket 绑到物理网卡），没有网卡名参数；
+     *  - `need_p2p` 只由 aggressiveP2p 生成（原「需要 P2P」开关已合并，见 P2P_SOFT_KEYS）。
+     */
+    private fun buildFlags(s: ConfigState): Map<String, String> {
+        val f = linkedMapOf<String, String>()
 
-        if (s.disableP2p) sb.append("disable_p2p = true\n")
-        if (s.p2pOnly) sb.append("p2p_only = true\n")
+        if (s.disableIpv6) f["enable_ipv6"] = "false"
+        if (s.disableEncrypt) f["enable_encryption"] = "false"
+        if (s.bindDevice.isNotBlank()) f["bind_device"] = "true"
 
-        // 激进 P2P：强制 need_p2p = true、无 lazy_p2p、且禁止任何 disable_*_hole_punching
-        val aggressiveP2p = s.aggressiveP2p
-        if (aggressiveP2p) {
-            sb.append("need_p2p = true\n")
-        } else {
-            if (s.lazyP2p) sb.append("lazy_p2p = true\n")
-            if (s.needP2p) sb.append("need_p2p = true\n")
+        // 激进 P2P：唯一决定 need_p2p；开启时不输出 lazy_p2p / disable_*_hole_punching
+        if (s.aggressiveP2p) f["need_p2p"] = "true"
+
+        for (spec in BOOL_FLAGS) {
+            if (s.aggressiveP2p && spec.key in P2P_SOFT_KEYS) continue
+            if (!spec.read(s)) continue
+            f[spec.key] = "true"
         }
 
-        if (s.disableTcpHp && !aggressiveP2p) sb.append("disable_tcp_hole_punching = true\n")
-        if (s.disableUdpHp && !aggressiveP2p) sb.append("disable_udp_hole_punching = true\n")
-        if (s.disableSymHp && !aggressiveP2p) sb.append("disable_sym_hole_punching = true\n")
-
-        if (s.enableKcpProxy) sb.append("enable_kcp_proxy = true\n")
-        if (s.disableKcpInput) sb.append("disable_kcp_input = true\n")
-        if (s.enableQuicProxy) sb.append("enable_quic_proxy = true\n")
-        if (s.disableQuicInput) sb.append("disable_quic_input = true\n")
-        if (s.proxyForwardBySystem) sb.append("proxy_forward_by_system = true\n")
-        if (s.relayAllRpc) sb.append("relay_all_peer_rpc = true\n")
-        if (s.exitNode) sb.append("enable_exit_node = true\n")
-
-        if (s.latencyFirst) sb.append("latency_first = true\n")
-        if (s.multiThread) sb.append("multi_thread = true\n")
-        if (s.useSmoltcp) sb.append("use_smoltcp = true\n")
-        if (s.mtu.isNotEmpty()) sb.append("mtu = ${s.mtu}\n")
-
-        if (s.disableEncrypt) sb.append("disable_encryption = true\n")
-        if (s.privateMode) sb.append("private_mode = true\n")
-        if (s.acceptDns) sb.append("accept_dns = true\n")
-
-        if (s.socks5.isNotEmpty()) sb.append("socks5 = \"${escapeToml(s.socks5)}\"\n")
-
-        if (s.portForward.isNotEmpty()) {
-            val parts = s.portForward.split("://")
-            if (parts.size == 2) {
-                val slashIdx = parts[1].lastIndexOf('/')
-                if (slashIdx > 0) {
-                    val localPart = parts[1].substring(0, slashIdx)
-                    val remotePart = parts[1].substring(slashIdx + 1)
-                    sb.append("[[port_forward]]\n")
-                    sb.append("port_forward_protocol = \"${escapeToml(parts[0])}\"\n")
-                    sb.append("port_forward_local = \"${escapeToml(localPart)}\"\n")
-                    sb.append("port_forward_remote = \"${escapeToml(remotePart)}\"\n")
-                }
-            }
-        }
-
-        if (s.encryptAlgo.isNotEmpty())
-            sb.append("encryption_algorithm = \"${escapeToml(s.encryptAlgo)}\"\n")
-        if (s.compression.isNotEmpty() && s.compression != "none")
-            sb.append("compression = \"${escapeToml(s.compression)}\"\n")
-
-        if (s.proxyNetworks.isNotEmpty()) {
-            s.proxyNetworks.split(",").forEach { cidr ->
-                val c = cidr.trim()
-                if (c.isNotEmpty())
-                    sb.append("[[proxy_networks]]\nproxy_network_cidr = \"${escapeToml(c)}\"\n")
-            }
-        }
-
-        if (s.exitNodes.isNotEmpty()) {
-            s.exitNodes.split(",").forEach { vip ->
-                val v = vip.trim()
-                if (v.isNotEmpty()) sb.append("[[exit_nodes]]\nnode = \"${escapeToml(v)}\"\n")
-            }
-        }
+        // mtu 必须是整数（写字符串会让核心 panic），0 = 自动，不输出
+        s.mtu.trim().toIntOrNull()?.let { if (it > 0) f["mtu"] = it.toString() }
+        if (s.encryptAlgo.isNotBlank())
+            f["encryption_algorithm"] = "\"${escapeToml(s.encryptAlgo.trim())}\""
+        compressionFlag(s.compression)?.let { f["data_compress_algo"] = it.toString() }
 
         // ── 省电模式（EasyTier 层）──
         // EasyTier 2.6.4 没有可配置的心跳 / peer 轮询间隔（`easytier-core --help` 与
         // 2.6.4 的 config.rs 里都没有 interval 类字段），能用且安全的是关掉 UPnP：
         // 否则核心会周期性做 SSDP 组播和 WANIPConnection 端口映射探测，每次都会
         // 唤醒无线电。stun_servers / lazy_p2p 会削弱 NAT 探测与打洞，这里刻意不动。
-        // 注意 flags 是嵌套表：2.6.4 的 Config 用 `flags: Option<Map>` 接收，
-        // 必须写在 [flags] 段里，顶层的裸 flag 会被 serde 静默忽略。
-        if (s.powerSaving) {
+        if (s.powerSaving) f["disable_upnp"] = "true"
+
+        return f
+    }
+
+    /**
+     * Build TOML string from [ConfigState] for the EasyTier daemon.
+     *
+     * 结构对齐 EasyTier 2.6.4 `Config`（easytier/src/common/config.rs）：
+     * 顶层标量必须在任何表头之前，否则 TOML 会把它们并入上一个表；
+     * 所有 flag 类开关进 `[flags]`。
+     */
+    fun buildToml(s: ConfigState): String {
+        val sb = StringBuilder()
+
+        // ── 顶层标量 ──
+        sb.append("instance_name = \"${escapeToml(s.instanceName.ifEmpty { "default" })}\"\n")
+        if (s.hostname.isNotBlank()) sb.append("hostname = \"${escapeToml(s.hostname.trim())}\"\n")
+        if (s.ipAddress.isNotBlank()) {
+            val prefix = s.ipPrefix.ifBlank { "24" }
+            sb.append("ipv4 = \"${escapeToml(s.ipAddress.trim())}/$prefix\"\n")
+        }
+        if (s.dhcp) sb.append("dhcp = true\n")
+        socks5ProxyUrl(s.socks5)?.let { sb.append("socks5_proxy = \"${escapeToml(it)}\"\n") }
+
+        // 官方顶层 exit_nodes 是「虚拟 IP 数组」，不是表
+        val exitVips = splitList(s.exitNodes).filter { it.contains('.') || it.contains(':') }
+        if (exitVips.isNotEmpty())
+            sb.append("exit_nodes = [${exitVips.joinToString(", ") { "\"${escapeToml(it)}\"" }}]\n")
+
+        sb.append("\n[network_identity]\n")
+        sb.append("network_name = \"${escapeToml(s.networkName)}\"\n")
+        sb.append("network_secret = \"${escapeToml(s.secret)}\"\n")
+
+        // ── [[peer]] ── uri 必须是合法 URL，没有有效节点时整段省略
+        for (uri in peerUris(s)) {
+            sb.append("\n[[peer]]\n")
+            sb.append("uri = \"${escapeToml(uri)}\"\n")
+        }
+
+        // ── [[proxy_network]] ── 官方字段是 cidr / mapped_cidr（旧代码的
+        //    [[proxy_networks]] + proxy_network_cidr 是错的，核心不认识）
+        for (entry in splitList(s.proxyNetworks)) {
+            val parts = entry.split("->")
+            val real = parts[0].trim()
+            if (real.isEmpty()) continue
+            sb.append("\n[[proxy_network]]\n")
+            sb.append("cidr = \"${escapeToml(real)}\"\n")
+            val mapped = parts.getOrNull(1)?.trim().orEmpty()
+            if (mapped.isNotEmpty()) sb.append("mapped_cidr = \"${escapeToml(mapped)}\"\n")
+        }
+
+        // ── [[port_forward]] ── 官方字段 bind_addr / dst_addr / proto
+        parsePortForward(s.portForward)?.let { (proto, bind, dst) ->
+            sb.append("\n[[port_forward]]\n")
+            sb.append("bind_addr = \"${escapeToml(bind)}\"\n")
+            sb.append("dst_addr = \"${escapeToml(dst)}\"\n")
+            sb.append("proto = \"${escapeToml(proto)}\"\n")
+        }
+
+        // ── [flags] ── 只能写在这里；顶层裸 flag 会被 serde 静默忽略
+        val flags = buildFlags(s)
+        if (flags.isNotEmpty()) {
             sb.append("\n[flags]\n")
-            sb.append("disable_upnp = true\n")
+            for ((k, v) in flags) sb.append("$k = $v\n")
         }
 
         return sb.toString()
@@ -352,17 +437,41 @@ object TomlUtils {
     //  TOML → JSON (import)
     // ═══════════════════════════════════════════════
 
-    /** Parse raw TOML text into a JSONObject with the same keys as [configStateToJson]. */
+    /** `bind_device` 只有布尔；ConfigState 沿用旧的字符串字段，非空即视为开启。 */
+    const val BIND_DEVICE_ON = "auto"
+
+    /**
+     * Parse raw TOML text into a JSONObject with the same keys as [configStateToJson].
+     *
+     * 同时吃两种格式：
+     *  - EasyTier 2.6.4 官方：开关在 `[flags]`，网段是 `[[proxy_network]] cidr`，
+     *    端口转发是 `[[port_forward]] bind_addr/dst_addr/proto`，`socks5_proxy` 是 URL；
+     *  - 旧版 orbit 导出的「顶层裸 flag」格式 —— 迁移读取，不丢字段。
+     */
     fun parseTomlToJson(text: String): JSONObject {
         val j = JSONObject()
-        var currentSection = ""
+        var section = ""
+
+        // [[port_forward]] 的字段可能任意顺序出现，攒齐再落盘
+        var pfProto = ""
+        var pfBind = ""
+        var pfDst = ""
+        fun flushPortForward() {
+            if (pfBind.isNotEmpty() && pfDst.isNotEmpty()) {
+                val proto = pfProto.ifEmpty { "tcp" }
+                j.put("portForward", "$proto://$pfBind/$pfDst")
+            }
+            pfProto = ""; pfBind = ""; pfDst = ""
+        }
 
         for (line in text.lines()) {
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
 
             if (trimmed.startsWith("[")) {
-                currentSection = trimmed.removeSurrounding("[", "]")
+                if (section == "port_forward") flushPortForward()
+                // "[flags]" / "[[peer]]" → "flags" / "peer"
+                section = trimmed.trimStart('[').trimEnd(']').trim()
                 continue
             }
 
@@ -372,80 +481,111 @@ object TomlUtils {
             val rawValue = trimmed.substring(eqIdx + 1).trim()
             val value = rawValue.removeSurrounding("\"").trim()
 
-            when (key) {
-                "instance_name" -> j.put("instanceName", value)
-                "hostname" -> j.put("hostname", value)
-                "ipv4" -> {
-                    val slashIdx = value.indexOf('/')
-                    if (slashIdx > 0) {
-                        j.put("ip", value.substring(0, slashIdx))
-                        j.put("prefix", value.substring(slashIdx + 1))
-                    } else { j.put("ip", value) }
-                }
-                "dhcp" -> j.put("dhcp", parseBool(rawValue))
-                "network_name" -> j.put("networkName", value)
-                "network_secret" -> j.put("secret", value)
-                "uri" -> {
-                    if (!j.has("server")) {
-                        val parts = value.split("://")
-                        if (parts.size == 2) {
-                            val hostPort = parts[1].split(":")
-                            if (hostPort.size == 2) {
-                                j.put("server", hostPort[0])
-                                j.put("port", hostPort[1])
-                            } else { j.put("server", parts[1]) }
-                        }
+            when {
+                section == "peer" && key == "uri" -> putPeerUri(j, value)
+                section == "proxy_network" && key == "cidr" -> appendCsv(j, "proxyNetworks", value)
+                // 映射网段（cidr->mapped）在 ConfigState 里是同一项的后半段
+                section == "proxy_network" && key == "mapped_cidr" -> {
+                    val existing = j.optString("proxyNetworks")
+                    if (existing.isNotEmpty()) {
+                        val parts = existing.split(",").map { it.trim() }.toMutableList()
+                        parts[parts.lastIndex] = "${parts.last()}->$value"
+                        j.put("proxyNetworks", parts.joinToString(","))
                     }
                 }
-                "disable_ipv6" -> j.put("disableIpv6", parseBool(rawValue))
-                "no_tun" -> j.put("noTun", parseBool(rawValue))
-                "bind_device" -> j.put("bindDevice", value)
-                "disable_p2p" -> j.put("disableP2p", parseBool(rawValue))
-                "p2p_only" -> j.put("p2pOnly", parseBool(rawValue))
-                "lazy_p2p" -> j.put("lazyP2p", parseBool(rawValue))
-                "need_p2p" -> j.put("needP2p", parseBool(rawValue))
-                "disable_tcp_hole_punching" -> j.put("disableTcpHp", parseBool(rawValue))
-                "disable_udp_hole_punching" -> j.put("disableUdpHp", parseBool(rawValue))
-                "disable_sym_hole_punching" -> j.put("disableSymHp", parseBool(rawValue))
-                "enable_kcp_proxy" -> j.put("enableKcpProxy", parseBool(rawValue))
-                "disable_kcp_input" -> j.put("disableKcpInput", parseBool(rawValue))
-                "enable_quic_proxy" -> j.put("enableQuicProxy", parseBool(rawValue))
-                "disable_quic_input" -> j.put("disableQuicInput", parseBool(rawValue))
-                "proxy_forward_by_system" -> j.put("proxyForwardBySystem", parseBool(rawValue))
-                "relay_all_peer_rpc" -> j.put("relayAllRpc", parseBool(rawValue))
-                "enable_exit_node" -> j.put("exitNode", parseBool(rawValue))
-                "latency_first" -> j.put("latencyFirst", parseBool(rawValue))
-                "multi_thread" -> j.put("multiThread", parseBool(rawValue))
-                "use_smoltcp" -> j.put("useSmoltcp", parseBool(rawValue))
-                "mtu" -> j.put("mtu", value)
-                "disable_encryption" -> j.put("disableEncrypt", parseBool(rawValue))
-                "private_mode" -> j.put("privateMode", parseBool(rawValue))
-                "accept_dns" -> j.put("acceptDns", parseBool(rawValue))
-                "socks5" -> j.put("socks5", value)
-                "encryption_algorithm" -> j.put("encryptAlgo", value)
-                "compression" -> j.put("compression", value)
-                "proxy_network_cidr" -> {
-                    val existing = j.optString("proxyNetworks")
-                    if (existing.isEmpty()) j.put("proxyNetworks", value)
-                    else j.put("proxyNetworks", "$existing,$value")
+                section == "port_forward" -> when (key) {
+                    // 官方字段
+                    "bind_addr", "port_forward_local" -> pfBind = value
+                    "dst_addr", "port_forward_remote" -> pfDst = value
+                    "proto", "port_forward_protocol" -> pfProto = value.lowercase()
                 }
-                "node" -> {
-                    val existing = j.optString("exitNodes")
-                    if (existing.isEmpty()) j.put("exitNodes", value)
-                    else j.put("exitNodes", "$existing,$value")
-                }
-                "port_forward_protocol" -> j.put("_pfProto", value)
-                "port_forward_local" -> j.put("_pfLocal", value)
-                "port_forward_remote" -> {
-                    val proto = j.optString("_pfProto", "udp")
-                    val local = j.optString("_pfLocal", "")
-                    j.put("portForward", "$proto://$local/$value")
-                    j.remove("_pfLocal")
-                    j.remove("_pfProto")
-                }
+                // 顶层与 [flags]、[network_identity] 用同一套键表（宽容迁移）
+                else -> applyTomlKey(j, key, rawValue, value)
             }
         }
+        flushPortForward()
         return j
+    }
+
+    /** 单个 `key = value` → JSON 字段；官方键优先，旧版顶层裸 flag 也认。 */
+    private fun applyTomlKey(j: JSONObject, key: String, rawValue: String, value: String) {
+        // 反向开关 / 特殊类型：官方写正向 enable_*，ConfigState 存的是「禁用」
+        when (key) {
+            "enable_ipv6" -> { j.put("disableIpv6", !parseBool(rawValue)); return }
+            "enable_encryption" -> { j.put("disableEncrypt", !parseBool(rawValue)); return }
+            "need_p2p" -> { j.put("aggressiveP2p", parseBool(rawValue)); return }
+            "bind_device" -> {
+                j.put("bindDevice", if (parseBool(rawValue)) BIND_DEVICE_ON else ""); return
+            }
+            "data_compress_algo" -> {
+                j.put("compression", if (value.filter { it.isDigit() } == "2") "zstd" else "none")
+                return
+            }
+            "disable_upnp" -> { j.put("powerSaving", parseBool(rawValue)); return }
+        }
+        BOOL_KEYS[key]?.let { j.put(it, parseBool(rawValue)); return }
+
+        when (key) {
+            "instance_name" -> j.put("instanceName", value)
+            "hostname" -> j.put("hostname", value)
+            "ipv4" -> {
+                val slashIdx = value.indexOf('/')
+                if (slashIdx > 0) {
+                    j.put("ip", value.substring(0, slashIdx))
+                    j.put("prefix", value.substring(slashIdx + 1))
+                } else { j.put("ip", value) }
+            }
+            "dhcp" -> j.put("dhcp", parseBool(rawValue))
+            "network_name" -> j.put("networkName", value)
+            "network_secret" -> j.put("secret", value)
+            "uri" -> putPeerUri(j, value)
+            // 旧版 orbit 顶层裸 flag
+            "disable_ipv6" -> j.put("disableIpv6", parseBool(rawValue))
+            "disable_encryption" -> j.put("disableEncrypt", parseBool(rawValue))
+            "mtu" -> j.put("mtu", value)
+            "socks5" -> j.put("socks5", value)
+            "socks5_proxy" -> j.put("socks5", socks5PortValue(value))
+            "encryption_algorithm" -> j.put("encryptAlgo", value)
+            "compression" -> j.put("compression", value)
+            "proxy_network_cidr" -> appendCsv(j, "proxyNetworks", value)
+            "node" -> appendCsv(j, "exitNodes", value)
+            "exit_nodes" -> for (ip in parseTomlArray(rawValue)) appendCsv(j, "exitNodes", ip)
+        }
+    }
+
+    /** `[[peer]] uri = ...` → nodes 数组（保留 IPv6 方括号）+ 首个节点回填 server/port。 */
+    private fun putPeerUri(j: JSONObject, uri: String) {
+        val node = parsePeerUri(uri) ?: return
+        val arr = j.optJSONArray("nodes") ?: org.json.JSONArray().also { j.put("nodes", it) }
+        val o = JSONObject()
+        o.put("protocol", node.protocol)
+        o.put("address", node.address)
+        o.put("port", node.port)
+        arr.put(o)
+        if (!j.has("server")) {
+            j.put("server", node.address)
+            j.put("port", node.port)
+        }
+    }
+
+    /** 逗号串追加（去重）。 */
+    private fun appendCsv(j: JSONObject, key: String, value: String) {
+        val v = value.trim().removeSurrounding("[")
+        if (v.isEmpty()) return
+        val existing = j.optString(key)
+        val parts = if (existing.isEmpty()) emptyList() else existing.split(",").map { it.trim() }
+        if (v in parts) return
+        j.put(key, if (existing.isEmpty()) v else "$existing,$v")
+    }
+
+    /** `["a", "b"]` → `[a, b]`；非数组返回空。 */
+    private fun parseTomlArray(raw: String): List<String> {
+        val t = raw.trim()
+        if (!t.startsWith("[") || !t.endsWith("]")) return emptyList()
+        return t.substring(1, t.length - 1)
+            .split(",")
+            .map { it.trim().removeSurrounding("\"").removeSurrounding("'").trim() }
+            .filter { it.isNotEmpty() }
     }
 
     /** Derive a human-friendly config name from parsed TOML content. */
@@ -488,34 +628,19 @@ object TomlUtils {
     private val IPV4_REGEX = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
     private val IPV6_LOOSE_REGEX = Regex("^[0-9a-fA-F:]+$")
 
-    /** Boolean-ish config keys (normalized) → ConfigState slot name. */
-    private val BOOL_KEYS = mapOf(
-        "dhcp" to "dhcp",
-        "no_tun" to "noTun",
-        "notun" to "noTun",
-        "disable_ipv6" to "disableIpv6",
-        "disable_p2p" to "disableP2p",
-        "p2p_only" to "p2pOnly",
-        "lazy_p2p" to "lazyP2p",
-        "need_p2p" to "needP2p",
-        "aggressive_p2p" to "aggressiveP2p",
-        "disable_tcp_hole_punching" to "disableTcpHp",
-        "disable_udp_hole_punching" to "disableUdpHp",
-        "disable_sym_hole_punching" to "disableSymHp",
-        "enable_kcp_proxy" to "enableKcpProxy",
-        "disable_kcp_input" to "disableKcpInput",
-        "enable_quic_proxy" to "enableQuicProxy",
-        "disable_quic_input" to "disableQuicInput",
-        "proxy_forward_by_system" to "proxyForwardBySystem",
-        "relay_all_peer_rpc" to "relayAllRpc",
-        "enable_exit_node" to "exitNode",
-        "latency_first" to "latencyFirst",
-        "multi_thread" to "multiThread",
-        "use_smoltcp" to "useSmoltcp",
-        "disable_encryption" to "disableEncrypt",
-        "private_mode" to "privateMode",
-        "accept_dns" to "acceptDns"
-    )
+    /**
+     * Boolean-ish config keys (normalized) → ConfigState slot name.
+     * 1:1 的官方 `[flags]` 键直接从 [BOOL_FLAGS] 派生，别名（旧版 / CLI 写法）另外补。
+     */
+    private val BOOL_KEYS: Map<String, String> = buildMap {
+        for (f in BOOL_FLAGS) put(f.key, f.name)
+        put("dhcp", "dhcp")
+        put("notun", "noTun")                        // 旧版 --notun 写法
+        put("disable_ipv6", "disableIpv6")           // 旧版 orbit 顶层裸 flag
+        put("disable_encryption", "disableEncrypt")
+        put("need_p2p", "aggressiveP2p")             // 已与激进 P2P 合并
+        put("aggressive_p2p", "aggressiveP2p")
+    }
 
     /**
      * Import arbitrary text (TOML / JSON / mixed / commented / unordered).
@@ -563,6 +688,10 @@ object TomlUtils {
         val peerValues = mutableListOf<String>()
         var lastPort = ""
         var unknownLines = 0
+        var section = ""
+        var pfProto = ""
+        var pfBind = ""
+        var pfDst = ""
 
         // Peers first: every URI in the whole text counts, structure ignored.
         for (m in URI_REGEX.findAll(text)) {
@@ -573,7 +702,10 @@ object TomlUtils {
         for (rawLine in text.lines()) {
             val line = stripInlineComment(rawLine).trim()
             if (line.isEmpty() || line.startsWith("//")) continue
-            if (line.startsWith("[") && line.endsWith("]")) continue   // [section] / [[peer]]
+            if (line.startsWith("[") && line.endsWith("]")) {          // [section] / [[peer]]
+                section = line.trimStart('[').trimEnd(']').trim()
+                continue
+            }
             if (line == "{" || line == "}" || line == "[" || line == "]") continue
 
             val pairs = keyValues(line)
@@ -597,8 +729,16 @@ object TomlUtils {
                     "ipv4", "ip", "ip_address", "ip_addr", "ipv4_addr", "tun_ip" -> {
                         cfg = applyIp(cfg, value, warnings); consumed = true
                     }
-                    "ip_prefix", "ipv4_prefix", "prefix", "netmask", "cidr", "subnet" -> {
+                    "ip_prefix", "ipv4_prefix", "prefix", "netmask", "subnet" -> {
                         cfg = cfg.copy(ipPrefix = value.trimStart('/')); consumed = true
+                    }
+                    // 官方 [[proxy_network]] cidr 是网段；其它上下文里的 cidr 是 TUN 前缀
+                    "cidr" -> {
+                        cfg = if (section == "proxy_network")
+                            cfg.copy(proxyNetworks = appendCsv(cfg.proxyNetworks, value))
+                        else
+                            cfg.copy(ipPrefix = value.trimStart('/'))
+                        consumed = true
                     }
                     "instance_name", "instancename", "instance" -> {
                         cfg = cfg.copy(instanceName = value); consumed = true
@@ -619,17 +759,42 @@ object TomlUtils {
                     "mtu" -> {
                         cfg = cfg.copy(mtu = value.filter { it.isDigit() }); consumed = true
                     }
+                    // 官方是布尔开关；旧版是网卡名字符串
                     "bind_device" -> {
-                        cfg = cfg.copy(bindDevice = value); consumed = true
+                        val b = lenientBool(value)
+                        cfg = cfg.copy(
+                            bindDevice = if (b == null) value else if (b) BIND_DEVICE_ON else ""
+                        )
+                        consumed = true
                     }
+                    // 官方 socks5_proxy 是 URL，UI 里只存端口
                     "socks5", "socks5_proxy" -> {
-                        cfg = cfg.copy(socks5 = value); consumed = true
+                        cfg = cfg.copy(socks5 = socks5PortValue(value)); consumed = true
                     }
                     "encryption_algorithm", "encrypt_algo", "encrypt", "cipher" -> {
                         cfg = cfg.copy(encryptAlgo = value); consumed = true
                     }
+                    // 官方是正向开关，ConfigState 存「禁用」
+                    "enable_ipv6" -> {
+                        lenientBool(value)?.let { cfg = cfg.copy(disableIpv6 = !it) }
+                        consumed = true
+                    }
+                    "enable_encryption" -> {
+                        lenientBool(value)?.let { cfg = cfg.copy(disableEncrypt = !it) }
+                        consumed = true
+                    }
                     "compression", "compress" -> {
                         cfg = cfg.copy(compression = value); consumed = true
+                    }
+                    // 官方是 CompressionAlgoPb 整数（None=1, Zstd=2）
+                    "data_compress_algo" -> {
+                        cfg = cfg.copy(compression = if (value.filter { it.isDigit() } == "2") "zstd" else "none")
+                        consumed = true
+                    }
+                    // 省电模式注入的 disable_upnp
+                    "disable_upnp" -> {
+                        lenientBool(value)?.let { cfg = cfg.copy(powerSaving = it) }
+                        consumed = true
                     }
                     "dns", "dns_server", "dns_servers", "dns_server_list" -> {
                         cfg = cfg.copy(dnsServer = value); consumed = true
@@ -637,9 +802,24 @@ object TomlUtils {
                     "proxy_network", "proxy_networks", "proxy_network_cidr" -> {
                         cfg = cfg.copy(proxyNetworks = appendCsv(cfg.proxyNetworks, value)); consumed = true
                     }
-                    "exit_nodes", "exit_node", "exit_node_vip" -> {
-                        cfg = cfg.copy(exitNodes = appendCsv(cfg.exitNodes, value)); consumed = true
+                    // [[proxy_network]] mapped_cidr 属于上一项的映射（cidr->mapped）
+                    "mapped_cidr" -> {
+                        if (cfg.proxyNetworks.isNotEmpty()) {
+                            val parts = cfg.proxyNetworks.split(",").map { it.trim() }.toMutableList()
+                            parts[parts.lastIndex] = "${parts.last()}->$value"
+                            cfg = cfg.copy(proxyNetworks = parts.joinToString(","))
+                        }
+                        consumed = true
                     }
+                    "exit_nodes", "exit_node", "exit_node_vip" -> {
+                        for (ip in csvValues(value))
+                            cfg = cfg.copy(exitNodes = appendCsv(cfg.exitNodes, ip))
+                        consumed = true
+                    }
+                    // 官方 [[port_forward]] 的三个字段（顺序任意，循环结束后拼装）
+                    "bind_addr", "port_forward_local" -> { pfBind = value; consumed = true }
+                    "dst_addr", "port_forward_remote" -> { pfDst = value; consumed = true }
+                    "proto", "port_forward_protocol" -> { pfProto = value.lowercase(); consumed = true }
                     else -> {
                         val slot = BOOL_KEYS[key]
                         if (slot != null) {
@@ -653,6 +833,9 @@ object TomlUtils {
             }
             if (!consumed && !URI_REGEX.containsMatchIn(line)) unknownLines++
         }
+
+        if (pfBind.isNotEmpty() && pfDst.isNotEmpty() && cfg.portForward.isEmpty())
+            cfg = cfg.copy(portForward = "${pfProto.ifEmpty { "tcp" }}://$pfBind/$pfDst")
 
         // Fallback: no URI anywhere → build nodes from server/host (+port) values.
         if (nodes.isEmpty()) {
@@ -820,6 +1003,13 @@ object TomlUtils {
     private fun appendCsv(existing: String, v: String): String =
         if (existing.isBlank()) v else "$existing,$v"
 
+    /** `["a","b"]` / `a, b` → [a, b]（宽松导入用）。 */
+    private fun csvValues(v: String): List<String> =
+        v.trim().removeSurrounding("[", "]")
+            .split(",")
+            .map { it.trim().removeSurrounding("\"").removeSurrounding("'").trim() }
+            .filter { it.isNotEmpty() }
+
     /** true/false/1/0/yes/no/on/off/是/否 … null when unparseable. */
     private fun lenientBool(v: String): Boolean? =
         when (v.trim().lowercase()) {
@@ -828,32 +1018,16 @@ object TomlUtils {
             else -> null
         }
 
-    private fun setBool(c: ConfigState, slot: String, b: Boolean): ConfigState = when (slot) {
-        "dhcp" -> c.copy(dhcp = b)
-        "noTun" -> c.copy(noTun = b)
-        "disableIpv6" -> c.copy(disableIpv6 = b)
-        "disableP2p" -> c.copy(disableP2p = b)
-        "p2pOnly" -> c.copy(p2pOnly = b)
-        "lazyP2p" -> c.copy(lazyP2p = b)
-        "needP2p" -> c.copy(needP2p = b)
-        "aggressiveP2p" -> c.copy(aggressiveP2p = b)
-        "disableTcpHp" -> c.copy(disableTcpHp = b)
-        "disableUdpHp" -> c.copy(disableUdpHp = b)
-        "disableSymHp" -> c.copy(disableSymHp = b)
-        "enableKcpProxy" -> c.copy(enableKcpProxy = b)
-        "disableKcpInput" -> c.copy(disableKcpInput = b)
-        "enableQuicProxy" -> c.copy(enableQuicProxy = b)
-        "disableQuicInput" -> c.copy(disableQuicInput = b)
-        "proxyForwardBySystem" -> c.copy(proxyForwardBySystem = b)
-        "relayAllRpc" -> c.copy(relayAllRpc = b)
-        "exitNode" -> c.copy(exitNode = b)
-        "latencyFirst" -> c.copy(latencyFirst = b)
-        "multiThread" -> c.copy(multiThread = b)
-        "useSmoltcp" -> c.copy(useSmoltcp = b)
-        "disableEncrypt" -> c.copy(disableEncrypt = b)
-        "privateMode" -> c.copy(privateMode = b)
-        "acceptDns" -> c.copy(acceptDns = b)
-        else -> c
+    private fun setBool(c: ConfigState, slot: String, b: Boolean): ConfigState {
+        val spec = BOOL_FLAG_BY_NAME[slot]
+        if (spec != null) return spec.write(c, b)
+        return when (slot) {
+            "dhcp" -> c.copy(dhcp = b)
+            "disableIpv6" -> c.copy(disableIpv6 = b)
+            "disableEncrypt" -> c.copy(disableEncrypt = b)
+            "aggressiveP2p" -> c.copy(aggressiveP2p = b)
+            else -> c
+        }
     }
 
     /** Did the structured JSON path actually read anything? */
@@ -903,7 +1077,7 @@ object TomlUtils {
         if (s.disableP2p) out.add("禁用 P2P")
         if (s.p2pOnly) out.add("仅 P2P")
         if (s.lazyP2p) out.add("延迟 P2P")
-        if (s.needP2p) out.add("需要 P2P")
+        if (s.aggressiveP2p) out.add("激进 P2P")
         if (s.disableTcpHp) out.add("禁用 TCP 打洞")
         if (s.disableUdpHp) out.add("禁用 UDP 打洞")
         if (s.disableSymHp) out.add("禁用 Sym 打洞")

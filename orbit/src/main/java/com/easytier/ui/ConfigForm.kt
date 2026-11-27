@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color as ComposeColor
+import com.easytier.TomlUtils
 import com.easytier.ui.theme.*
 
 @Composable
@@ -398,13 +399,23 @@ fun ConfigForm(
                                 hint = T("隧道内不传 IPv6 流量", "No IPv6 traffic inside the tunnel", langZh)
                             )
                         }
-                        HmTextField(
-                            value = config.bindDevice,
-                            onValueChange = { onConfigChange(config.copy(bindDevice = it)) },
-                            label = T("绑定网卡", "Bind Device", langZh),
-                            placeholder = T("例如 eth0, wlan0", "e.g. eth0, wlan0", langZh),
+                        // 官方 2.6.4 里 bind_device 是布尔（把 socket 绑到物理网卡），
+                        // 没有「指定网卡名」的字段 → 这里做成开关。
+                        HmToggle(
+                            checked = config.bindDevice.isNotBlank(),
+                            onCheckedChange = {
+                                onConfigChange(
+                                    config.copy(bindDevice = if (it) TomlUtils.BIND_DEVICE_ON else "")
+                                )
+                            },
+                            label = T("绑定物理网卡", "Bind Physical NIC", langZh),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = colors,
-                            hint = T("只从指定网卡收发，留空自动", "Bind to a NIC; empty = auto", langZh)
+                            hint = T(
+                                "把连接套接字绑到物理网卡，避免组网路由冲突",
+                                "Bind sockets to physical NICs to avoid route conflicts",
+                                langZh
+                            )
                         )
 
                         // P2P
@@ -439,24 +450,15 @@ fun ConfigForm(
                                 hint = T("只允许直连不中继", "Direct links only, no relay", langZh)
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmToggle(
-                                checked = config.lazyP2p,
-                                onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) },
-                                label = T("延迟 P2P", "Lazy P2P", langZh),
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                hint = T("先中继再尝试打洞，省电", "Relay first, punch later", langZh)
-                            )
-                            HmToggle(
-                                checked = config.needP2p,
-                                onCheckedChange = { onConfigChange(config.copy(needP2p = it)) },
-                                label = T("需要 P2P", "Need P2P", langZh),
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                hint = T("强制要求直连", "Require a direct peer link", langZh)
-                            )
-                        }
+                        // 「需要 P2P」已合并进「激进 P2P」：两者都只是 need_p2p，留着会重复
+                        HmToggle(
+                            checked = config.lazyP2p,
+                            onCheckedChange = { onConfigChange(config.copy(lazyP2p = it)) },
+                            label = T("延迟 P2P", "Lazy P2P", langZh),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = colors,
+                            hint = T("先中继再尝试打洞，省电（激进 P2P 关闭时生效）", "Relay first, punch later; ignored while Aggressive P2P is on", langZh)
+                        )
 
                         // NAT / Hole Punch
                         SectionLabel(T("NAT / 打洞", "NAT / Hole Punch", langZh), colors)

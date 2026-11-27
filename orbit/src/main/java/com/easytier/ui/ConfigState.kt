@@ -37,11 +37,12 @@ data class ConfigState(
     val disableP2p: Boolean = false,
     val p2pOnly: Boolean = false,
     val lazyP2p: Boolean = false,
-    val needP2p: Boolean = false,
     /**
-     * 激进 P2P（默认开启）：强制 need_p2p = true、lazy_p2p 不输出、
-     * 且不输出任何 disable_*_hole_punching = true —— 即立即并发打洞，
+     * 激进 P2P（默认开启）：生成 `[flags] need_p2p = true`，且不输出
+     * `lazy_p2p` / `disable_*_hole_punching` —— 即立即并发打洞，
      * 宁可直连失败也不默默走中继。
+     *
+     * 原来的独立「需要 P2P」开关已合并到这里（两者映射的都是 need_p2p）。
      */
     val aggressiveP2p: Boolean = true,
 

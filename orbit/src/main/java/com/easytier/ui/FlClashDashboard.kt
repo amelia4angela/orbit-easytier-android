@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -237,8 +238,7 @@ fun FlClashStatusCard(
     latency: String,
     modifier: Modifier = Modifier,
     langZh: Boolean = true,
-    rxSpeed: String = "",
-    txSpeed: String = ""
+    publicIp: String = ""
 ) {
     val colors = currentColors()
     val isDark = LocalIsDarkTheme.current
@@ -431,20 +431,12 @@ fun FlClashStatusCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             CardStatItem(
-                icon = Icons.Rounded.ArrowDownward,
-                label = T("下载", "Down", langZh),
-                value = rxSpeed.ifEmpty { "—" },
+                icon = Icons.Rounded.Public,
+                label = T("外网 IP", "Public IP", langZh),
+                value = publicIp.ifEmpty { "—" },
                 accent = statusBase,
                 colors = colors,
-                modifier = Modifier.weight(1f)
-            )
-            CardStatItem(
-                icon = Icons.Rounded.ArrowUpward,
-                label = T("上传", "Up", langZh),
-                value = txSpeed.ifEmpty { "—" },
-                accent = statusBase,
-                colors = colors,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1.5f)
             )
             CardStatItem(
                 icon = Icons.Rounded.Lan,

@@ -677,6 +677,28 @@ private fun StatusTab(
     // ── Speed history for sparkline (sample on change, keep 40 pts) ──
     val speedHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
     val rxSpeed = myNodeItem?.rxSpeed ?: ""
+
+    // Public egress IP — fetched while connected (ipify → ip-api → ipip fallbacks)
+    var publicIp by remember { mutableStateOf("") }
+    LaunchedEffect(isConnected) {
+        if (!isConnected) { publicIp = ""; return@LaunchedEffect }
+        publicIp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val endpoints = listOf(
+                "https://api.ipify.org",
+                "http://ip-api.com/line?fields=query",
+                "https://myip.ipip.net"
+            )
+            endpoints.firstNotNullOfOrNull { url ->
+                try {
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 6000; conn.readTimeout = 6000
+                    val body = conn.inputStream.bufferedReader().readText().trim()
+                    conn.disconnect()
+                    body.lineSequence().firstOrNull()?.trim()?.takeIf { it.matches(Regex("[0-9a-fA-F:.]+")) }
+                } catch (_: Exception) { null }
+            } ?: ""
+        }
+    }
     LaunchedEffect(rxSpeed) {
         val v = parseSpeedValue(rxSpeed)
         if (v > 0f) {
@@ -715,8 +737,7 @@ private fun StatusTab(
                 peerCount = peerCount,
                 latency = latency,
                 langZh = langZh,
-                rxSpeed = rxSpeed,
-                txSpeed = myNodeItem?.txSpeed ?: ""
+                publicIp = publicIp
             )
 
             // ── Speed cards (only when running) ──

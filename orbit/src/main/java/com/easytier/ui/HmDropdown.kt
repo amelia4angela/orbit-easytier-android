@@ -162,7 +162,12 @@ fun HmDropdownField(
                         )
                         Spacer(Modifier.width(12.dp))
                     }
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            // align with SettingsNavRow titles (icon 20dp + 12dp gap)
+                            .padding(start = 32.dp)
+                    ) {
                         Text(
                             text = label,
                             color = colors.textPrimary,

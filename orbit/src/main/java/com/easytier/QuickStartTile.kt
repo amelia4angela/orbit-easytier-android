@@ -49,6 +49,14 @@ class QuickStartTile : TileService() {
                 .putBoolean("is_running", false).apply()
             refreshTile()
         } else {
+            // Silent start — load the saved config and bring the tunnel up in the
+            // background; only fall back to the activity when the one-time VPN
+            // grant or a valid config is missing.
+            if (silentStart()) {
+                AppLogger.i(TAG, "Tile tap → silent start OK")
+                refreshTile()
+                return
+            }
             AppLogger.i(TAG, "Tile tap → start (handing off to MainActivity)")
             val launch = Intent(this, MainActivity::class.java).apply {
                 putExtra(MainActivity.EXTRA_QUICK_TOGGLE, true)
@@ -74,6 +82,57 @@ class QuickStartTile : TileService() {
     }
 
     /** Sync label / state / icon with the real tunnel state. */
+    /** Try to bring the tunnel up with no UI. Returns false when the activity must take over. */
+    private fun silentStart(): Boolean {
+        return try {
+            val prefs = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
+            val name = prefs.getString("last_config_name", "default") ?: "default"
+            val safe = name.replace(Regex("[^\\w.-]"), "_")
+            var json = java.io.File(filesDir, "configs/$safe.json")
+            if (!json.exists()) {
+                val ext = java.io.File(getExternalFilesDir(null) ?: filesDir, "configs/$safe.json")
+                if (ext.exists()) json = ext else return false
+            }
+            val cfg = com.easytier.TomlUtils.jsonToConfigState(
+                org.json.JSONObject(json.readText())
+            )
+            if (cfg.networkName.isBlank() || cfg.secret.isBlank() ||
+                cfg.server.isBlank() || cfg.port.isBlank()) return false
+
+            val mgr = EasyTierManager.getInstance()
+            val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            mgr.onNetworkChanged = { ip, cidrs ->
+                mainHandler.post {
+                    if (!cfg.noTun) {
+                        val grant = android.net.VpnService.prepare(this@QuickStartTile)
+                        if (grant == null) {
+                            com.easytier.vpn.EasyTierVpnService.langZh = langZh
+                            mgr.restartVpnService(ip, cidrs)
+                        } else {
+                            // One-time VPN consent still needed → hand over to the UI
+                            val launch = Intent(this@QuickStartTile, MainActivity::class.java).apply {
+                                putExtra(MainActivity.EXTRA_QUICK_TOGGLE, true)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                            try { startActivity(launch) } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+            mgr.start(
+                cfg.instanceName.ifEmpty { "default" },
+                com.easytier.TomlUtils.buildToml(cfg),
+                cfg.noTun,
+                cfg.dnsServer.takeIf { cfg.dnsEnabled }
+            )
+            prefs.edit().putBoolean("is_running", true).apply()
+            true
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "silentStart failed: ${e.message}")
+            false
+        }
+    }
+
     private fun refreshTile() {
         val tile = qsTile ?: return
         EasyTierManager.init(this)

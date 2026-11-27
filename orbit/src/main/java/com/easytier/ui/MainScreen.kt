@@ -326,8 +326,7 @@ private fun BottomNavigationBar(
                 .clip(shape)
                 .background(colors.navGlass)
                 .border(0.5.dp, colors.navGlassBorder, shape)
-        )
-
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

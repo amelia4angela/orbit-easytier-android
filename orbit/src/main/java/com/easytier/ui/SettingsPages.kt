@@ -35,6 +35,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.easytier.AppLogger
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.components.glassStable
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -88,7 +92,11 @@ fun SettingsSubPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                // 顶栏玻璃：薄雾 + 顶部高光 + 分段描边。顶栏不覆盖滚动内容，
+                // 所以只上材质、不做背景模糊（避免和页面里的玻璃嵌套模糊）。
+                .glassSurface(radius = GlassRadius.md, intensity = 0.9f)
+                .padding(horizontal = 2.dp, vertical = 2.dp)
         ) {
             HmBackGlyph(
                 onBack = onBack,
@@ -151,9 +159,8 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                // 分组卡片：稳定玻璃材质（高不透明度填充 + 发丝描边，无背景模糊）
+                .glassStable(radius = 12.dp)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column {
@@ -223,9 +230,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .glassStable(radius = 12.dp)
                 .clickable {
                     val next = !logEnabled
                     logEnabled = next
@@ -269,9 +274,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .glassStable(radius = 12.dp)
                 .clickable { onRestartCore() }
                 .padding(16.dp)
         ) {
@@ -371,9 +374,7 @@ fun ThemePage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(14.dp))
+                .glassStable(radius = 14.dp)
                 .padding(vertical = 6.dp, horizontal = 6.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -402,12 +403,12 @@ fun ThemePage(
         }
 
         // 预留位：以后的主题卡片（配色包 / 图标风格）挂在这里
+        // 玻璃材质 + 半透明灰罩，保持「占位、低对比」的观感。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.inputBg.copy(alpha = 0.5f))
-                .border(0.5.dp, colors.inputBorder, RoundedCornerShape(14.dp))
+                .glassStable(radius = 14.dp)
+                .background(colors.inputBg.copy(alpha = 0.5f), glassShape(14.dp))
                 .padding(14.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -717,9 +718,7 @@ private fun PermissionRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface)
-            .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+            .glassStable(radius = 12.dp)
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

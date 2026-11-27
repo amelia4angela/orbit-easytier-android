@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,6 +39,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.easytier.ui.glass.GlassMotion
+import com.easytier.ui.glass.GlassTheme
+import com.easytier.ui.glass.components.GlassSurface
+import com.easytier.ui.glass.effects.GlassSky
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.rememberGlassLevel
 import com.easytier.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -158,279 +168,299 @@ fun MainScreen(
     // Kept outside the animated content so a mid-transition press can't double-pop.
     BackHandler(enabled = pageStack.isNotEmpty()) { closePage() }
 
-    Box(
-        modifier = modifier.fillMaxSize()
-    ) {
-        // Background gradient
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
-                )
-        )
-
-        // Decorative glows
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(280.dp)
-                .offset(x = 60.dp, y = (-80).dp)
-                .clip(RoundedCornerShape(140.dp))
-                .background(colors.glowColor)
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .size(220.dp)
-                .offset(x = (-80).dp, y = 160.dp)
-                .clip(RoundedCornerShape(110.dp))
-                .background(colors.glowColorDark)
-        )
-
-        // Content area
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (subPage != null) 0.dp else 72.dp)
+    // ── 液态玻璃上下文 ──
+    // 只影响渲染层：质量档位沿用「设置 → Glass Showcase」里选过的值（没选过就按设备能力自动分级），
+    // GlassSky 用同一套主题渐变作底图，悬浮玻璃（底部导航）才能真正采样并模糊它。
+    // 业务状态 / 网络 / 页面栈全部还在下面这个 Box 里，一行没动。
+    val glassLevel = rememberGlassLevel()
+    GlassTheme(level = glassLevel.value) {
+        GlassSky(
+            modifier = Modifier.fillMaxSize(),
+            colors = glassColors(),
+            backdrop = { canvasSize -> drawOrbitBackdrop(colors, canvasSize) }
         ) {
-            // 二三级页进出转场：进入 = 新页从右滑入 + 淡入（it/4，260ms）；
-            // 返回 = 当前页向右滑出 + 淡出。同一套 HarmonyEasing，pageStack 逻辑不变。
-            AnimatedContent(
-                targetState = subPage,
-                transitionSpec = {
-                    if (navForward) {
-                        (slideInHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
-                            fadeIn(tween(260, easing = HarmonyEasing)))
-                            .togetherWith(fadeOut(tween(120, easing = HarmonyEasing)))
-                    } else {
-                        fadeIn(tween(200, easing = HarmonyEasing))
-                            .togetherWith(
-                                slideOutHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
-                                    fadeOut(tween(200, easing = HarmonyEasing))
+            Box(
+                modifier = modifier.fillMaxSize()
+            ) {
+                // Content area
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (subPage != null) 0.dp else 72.dp)
+                ) {
+                    // 二三级页进出转场：进入 = 新页从右滑入 + 淡入（it/4，260ms）；
+                    // 返回 = 当前页向右滑出 + 淡出。同一套 HarmonyEasing，pageStack 逻辑不变。
+                    AnimatedContent(
+                        targetState = subPage,
+                        transitionSpec = {
+                            if (navForward) {
+                                (slideInHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
+                                    fadeIn(tween(260, easing = HarmonyEasing)))
+                                    .togetherWith(fadeOut(tween(120, easing = HarmonyEasing)))
+                            } else {
+                                fadeIn(tween(200, easing = HarmonyEasing))
+                                    .togetherWith(
+                                        slideOutHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
+                                            fadeOut(tween(200, easing = HarmonyEasing))
+                                    )
+                            }
+                        },
+                        label = "settingsPageTransition"
+                    ) { page ->
+                        if (page != null) {
+                            when (page) {
+                                SettingsPage.GENERAL -> GeneralPage(
+                                    langZh = langZh,
+                                    config = config,
+                                    onConfigChange = onConfigChange,
+                                    onConfigServer = onConfigServer,
+                                    onRestartCore = onToggleConnection,
+                                    onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
+                                    onBack = { closePage() }
+                                )
+                                SettingsPage.PERMISSIONS -> PermissionsPage(
+                                    langZh = langZh,
+                                    onBack = { closePage() }
+                                )
+                                SettingsPage.THEME -> ThemePage(
+                                    langZh = langZh,
+                                    isDarkTheme = isDarkTheme,
+                                    dynamicColor = dynamicColor,
+                                    onToggleTheme = onToggleTheme,
+                                    onToggleDynamic = onToggleDynamic,
+                                    onBack = { closePage() }
+                                )
+                                SettingsPage.ABOUT -> AboutPage(
+                                    langZh = langZh,
+                                    isConnected = connectionState.status == ConnectionStatus.RUNNING
+                                            || connectionState.status == ConnectionStatus.NO_TUN,
+                                    connectionStartTime = connectionStartTime,
+                                    autoCheckUpdate = autoCheckUpdate,
+                                    onAutoCheckUpdateChange = { enabled ->
+                                        autoCheckUpdate = enabled
+                                        setAutoCheckUpdateEnabled(ctx, enabled)
+                                    },
+                                    // 手动检查到新版本 → 同一条状态 + 同一个弹窗
+                                    onNewVersionFound = { info ->
+                                        updateInfo = info
+                                        updateDialogVisible = true
+                                    },
+                                    onBack = { closePage() },
+                                    onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
+                                )
+                                SettingsPage.PRIVACY -> PrivacyDocPage(
+                                    langZh = langZh,
+                                    forced = false,
+                                    // 从「隐私政策已更新」弹窗进来时底部才给「已阅读并同意」
+                                    showAgree = privacyAgreeMode,
+                                    onAccept = {
+                                        privacyAgreeMode = false
+                                        closePage()
+                                    },
+                                    onDecline = {
+                                        privacyAgreeMode = false
+                                        closePage()
+                                    },
+                                    onBack = {
+                                        privacyAgreeMode = false
+                                        closePage()
+                                    }
+                                )
+                                // 临时入口：液态玻璃设计系统演示页（阶段 3-5）。返回走 pageStack。
+                                SettingsPage.SHOWCASE -> com.easytier.ui.glass.GlassShowcase(
+                                    langZh = langZh,
+                                    isDarkTheme = isDarkTheme,
+                                    onToggleTheme = onToggleTheme,
+                                    onBack = { closePage() }
+                                )
+                            }
+                        } else {
+                            AnimatedContent(
+                                targetState = currentTab,
+                                transitionSpec = {
+                                    (fadeIn(tween(300, easing = HarmonyEasing)) +
+                                        slideInHorizontally(initialOffsetX = { it / 6 }))
+                                        .togetherWith(
+                                            fadeOut(tween(200, easing = HarmonyEasing)) +
+                                                slideOutHorizontally(targetOffsetX = { -it / 6 })
+                                        )
+                                },
+                                label = "tabTransition"
+                            ) { tab ->
+                            when (tab) {
+                                Tab.STATUS -> StatusTab(
+                                connectionState = connectionState,
+                                onToggleConnection = onToggleConnection,
+                                myNodeItem = myNodeItem,
+                                peerItems = peerItems,
+                                langZh = langZh,
+                                connectionStartTime = connectionStartTime
                             )
+                            Tab.CONFIG -> ConfigTab(
+                                config = config,
+                                onConfigChange = onConfigChange,
+                                currentConfigName = currentConfigName,
+                                langZh = langZh,
+                                connectionStatus = connectionState.status,
+                                onConfigNameClick = onConfigNameClick,
+                                onSaveConfig = onSaveConfig,
+                                onAutoSaveConfig = onAutoSaveConfig,
+                                onManageConfigs = onManageConfigs,
+                                onImportToml = onImportToml,
+                                onExportToml = onExportToml,
+                                onDeleteConfig = onDeleteConfig,
+                                onLaunchConfigEditor = onLaunchConfigEditor,
+                                onApplyConfig = {
+                                    onToggleConnection()
+                                    currentTab = Tab.STATUS
+                                },
+                                onStopService = onToggleConnection
+                            )
+                            Tab.MORE -> MoreTab(
+                                langZh = langZh,
+                                onToggleLanguage = onToggleLanguage,
+                                isDarkTheme = isDarkTheme,
+                                dynamicColor = dynamicColor,
+                                onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
+                                onNavigateToTheme = { openPage(SettingsPage.THEME) },
+                                onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
+                                onNavigateToShowcase = { openPage(SettingsPage.SHOWCASE) },
+                                onConfigServer = onConfigServer,
+                                onToggleConnection = onToggleConnection,
+                                onOpenLogs = { currentTab = Tab.LOGS },
+                                isConnected = connectionState.status == ConnectionStatus.RUNNING
+                                        || connectionState.status == ConnectionStatus.NO_TUN,
+                                connectionStartTime = connectionStartTime
+                            )
+                            Tab.LOGS -> LogsTab(langZh = langZh)
+                            }
+                            }
+                        }
                     }
-                },
-                label = "settingsPageTransition"
-            ) { page ->
-                if (page != null) {
-                    when (page) {
-                        SettingsPage.GENERAL -> GeneralPage(
-                            langZh = langZh,
-                            config = config,
-                            onConfigChange = onConfigChange,
-                            onConfigServer = onConfigServer,
-                            onRestartCore = onToggleConnection,
-                            onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
-                            onBack = { closePage() }
-                        )
-                        SettingsPage.PERMISSIONS -> PermissionsPage(
-                            langZh = langZh,
-                            onBack = { closePage() }
-                        )
-                        SettingsPage.THEME -> ThemePage(
-                            langZh = langZh,
-                            isDarkTheme = isDarkTheme,
-                            dynamicColor = dynamicColor,
-                            onToggleTheme = onToggleTheme,
-                            onToggleDynamic = onToggleDynamic,
-                            onBack = { closePage() }
-                        )
-                        SettingsPage.ABOUT -> AboutPage(
-                            langZh = langZh,
-                            isConnected = connectionState.status == ConnectionStatus.RUNNING
-                                    || connectionState.status == ConnectionStatus.NO_TUN,
-                            connectionStartTime = connectionStartTime,
-                            autoCheckUpdate = autoCheckUpdate,
-                            onAutoCheckUpdateChange = { enabled ->
-                                autoCheckUpdate = enabled
-                                setAutoCheckUpdateEnabled(ctx, enabled)
-                            },
-                            // 手动检查到新版本 → 同一条状态 + 同一个弹窗
-                            onNewVersionFound = { info ->
-                                updateInfo = info
-                                updateDialogVisible = true
-                            },
-                            onBack = { closePage() },
-                            onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
-                        )
-                        SettingsPage.PRIVACY -> PrivacyDocPage(
-                            langZh = langZh,
-                            forced = false,
-                            // 从「隐私政策已更新」弹窗进来时底部才给「已阅读并同意」
-                            showAgree = privacyAgreeMode,
-                            onAccept = {
-                                privacyAgreeMode = false
-                                closePage()
-                            },
-                            onDecline = {
-                                privacyAgreeMode = false
-                                closePage()
-                            },
-                            onBack = {
-                                privacyAgreeMode = false
-                                closePage()
+                }
+
+                // Bottom Navigation
+                if (subPage == null) {
+                    BottomNavigationBar(
+                        currentTab = currentTab,
+                        onTabSelected = { currentTab = it },
+                        langZh = langZh,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                }
+
+                // ── 更新弹窗（唯一实例）──
+                // 启动静默检查与关于页手动检查都写同一份 updateInfo/updateDialogVisible，
+                // 所以弹窗放在最外层：不管用户当前在哪个 Tab / 二级页都能弹出来。
+                UpdateDialog(
+                    visible = updateDialogVisible,
+                    info = updateInfo,
+                    currentVersion = currentVersion,
+                    langZh = langZh,
+                    onDownloadApk = {
+                        val info = updateInfo
+                        val apkUrl = info?.apkUrl
+                        if (info == null || apkUrl.isNullOrBlank()) {
+                            Toast.makeText(
+                                ctx,
+                                T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
+                        }
+                    },
+                    onOpenBrowser = {
+                        val url = updateInfo?.htmlUrl
+                        if (!url.isNullOrBlank()) {
+                            try {
+                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            } catch (_: Exception) {
+                                Toast.makeText(
+                                    ctx,
+                                    T("无法打开浏览器", "Cannot open browser", langZh),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    onDismiss = { updateDialogVisible = false }
+                )
+
+                // ── 隐私政策更新提示 ──
+                // 启动 8s 拉取后 hash 与已同意版本不同才弹；「稍后」不写 hash，下次启动再提示。
+                HmDialog(
+                    visible = privacyUpdateVisible,
+                    onDismiss = { privacyUpdateVisible = false },
+                    title = T("隐私政策已更新", "Privacy Policy Updated", langZh),
+                    maxWidth = 340.dp,
+                    horizontalPadding = 20.dp
+                ) {
+                    Text(
+                        text = T(
+                            "我们更新了隐私政策，请查看最新内容。",
+                            "We updated our privacy policy. Please review the latest version.",
+                            langZh
+                        ),
+                        color = colors.textSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+
+                    HmDialogActionRow {
+                        HmDialogPrimaryButton(
+                            text = T("查看并同意", "Review & Agree", langZh),
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                privacyUpdateVisible = false
+                                privacyAgreeMode = true          // 政策页底部才会出现「已阅读并同意」
+                                openPage(SettingsPage.PRIVACY)
                             }
                         )
-                        // 临时入口：液态玻璃设计系统演示页（阶段 3-5）。返回走 pageStack。
-                        SettingsPage.SHOWCASE -> com.easytier.ui.glass.GlassShowcase(
-                            langZh = langZh,
-                            isDarkTheme = isDarkTheme,
-                            onToggleTheme = onToggleTheme,
-                            onBack = { closePage() }
+                        HmDialogSecondaryButton(
+                            text = T("稍后", "Later", langZh),
+                            modifier = Modifier.weight(1f),
+                            onClick = { privacyUpdateVisible = false }
                         )
                     }
-                } else {
-                    AnimatedContent(
-                        targetState = currentTab,
-                        transitionSpec = {
-                            (fadeIn(tween(300, easing = HarmonyEasing)) +
-                                slideInHorizontally(initialOffsetX = { it / 6 }))
-                                .togetherWith(
-                                    fadeOut(tween(200, easing = HarmonyEasing)) +
-                                        slideOutHorizontally(targetOffsetX = { -it / 6 })
-                                )
-                        },
-                        label = "tabTransition"
-                    ) { tab ->
-                    when (tab) {
-                        Tab.STATUS -> StatusTab(
-                        connectionState = connectionState,
-                        onToggleConnection = onToggleConnection,
-                        myNodeItem = myNodeItem,
-                        peerItems = peerItems,
-                        langZh = langZh,
-                        connectionStartTime = connectionStartTime
-                    )
-                    Tab.CONFIG -> ConfigTab(
-                        config = config,
-                        onConfigChange = onConfigChange,
-                        currentConfigName = currentConfigName,
-                        langZh = langZh,
-                        connectionStatus = connectionState.status,
-                        onConfigNameClick = onConfigNameClick,
-                        onSaveConfig = onSaveConfig,
-                        onAutoSaveConfig = onAutoSaveConfig,
-                        onManageConfigs = onManageConfigs,
-                        onImportToml = onImportToml,
-                        onExportToml = onExportToml,
-                        onDeleteConfig = onDeleteConfig,
-                        onLaunchConfigEditor = onLaunchConfigEditor,
-                        onApplyConfig = {
-                            onToggleConnection()
-                            currentTab = Tab.STATUS
-                        },
-                        onStopService = onToggleConnection
-                    )
-                    Tab.MORE -> MoreTab(
-                        langZh = langZh,
-                        onToggleLanguage = onToggleLanguage,
-                        isDarkTheme = isDarkTheme,
-                        dynamicColor = dynamicColor,
-                        onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
-                        onNavigateToTheme = { openPage(SettingsPage.THEME) },
-                        onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
-                        onNavigateToShowcase = { openPage(SettingsPage.SHOWCASE) },
-                        onConfigServer = onConfigServer,
-                        onToggleConnection = onToggleConnection,
-                        onOpenLogs = { currentTab = Tab.LOGS },
-                        isConnected = connectionState.status == ConnectionStatus.RUNNING
-                                || connectionState.status == ConnectionStatus.NO_TUN,
-                        connectionStartTime = connectionStartTime
-                    )
-                    Tab.LOGS -> LogsTab(langZh = langZh)
-                    }
-                    }
                 }
-            }
-        }
-
-        // Bottom Navigation
-        if (subPage == null) {
-            BottomNavigationBar(
-                currentTab = currentTab,
-                onTabSelected = { currentTab = it },
-                langZh = langZh,
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        }
-
-        // ── 更新弹窗（唯一实例）──
-        // 启动静默检查与关于页手动检查都写同一份 updateInfo/updateDialogVisible，
-        // 所以弹窗放在最外层：不管用户当前在哪个 Tab / 二级页都能弹出来。
-        UpdateDialog(
-            visible = updateDialogVisible,
-            info = updateInfo,
-            currentVersion = currentVersion,
-            langZh = langZh,
-            onDownloadApk = {
-                val info = updateInfo
-                val apkUrl = info?.apkUrl
-                if (info == null || apkUrl.isNullOrBlank()) {
-                    Toast.makeText(
-                        ctx,
-                        T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
-                }
-            },
-            onOpenBrowser = {
-                val url = updateInfo?.htmlUrl
-                if (!url.isNullOrBlank()) {
-                    try {
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (_: Exception) {
-                        Toast.makeText(
-                            ctx,
-                            T("无法打开浏览器", "Cannot open browser", langZh),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onDismiss = { updateDialogVisible = false }
-        )
-
-        // ── 隐私政策更新提示 ──
-        // 启动 8s 拉取后 hash 与已同意版本不同才弹；「稍后」不写 hash，下次启动再提示。
-        HmDialog(
-            visible = privacyUpdateVisible,
-            onDismiss = { privacyUpdateVisible = false },
-            title = T("隐私政策已更新", "Privacy Policy Updated", langZh),
-            maxWidth = 340.dp,
-            horizontalPadding = 20.dp
-        ) {
-            Text(
-                text = T(
-                    "我们更新了隐私政策，请查看最新内容。",
-                    "We updated our privacy policy. Please review the latest version.",
-                    langZh
-                ),
-                color = colors.textSecondary,
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
-
-            HmDialogActionRow {
-                HmDialogPrimaryButton(
-                    text = T("查看并同意", "Review & Agree", langZh),
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        privacyUpdateVisible = false
-                        privacyAgreeMode = true          // 政策页底部才会出现「已阅读并同意」
-                        openPage(SettingsPage.PRIVACY)
-                    }
-                )
-                HmDialogSecondaryButton(
-                    text = T("稍后", "Later", langZh),
-                    modifier = Modifier.weight(1f),
-                    onClick = { privacyUpdateVisible = false }
-                )
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════
+//  Glass backdrop — 屏幕底色（同时也是悬浮玻璃的采样源）
+// ═══════════════════════════════════════════════════
+
+/**
+ * APP 背景底图：竖直主题渐变 + 两团柔光。
+ *
+ * 与改造前那三个装饰 Box 完全等价（280/220dp 圆角方块 = 半径 140/110dp 的圆），
+ * 改由 [GlassSky] 绘制 —— 这样悬浮玻璃采样/模糊到的就是屏幕上真实看到的那层背景，
+ * 而且背景只画一次，不会每个玻璃件再叠一层模糊。
+ */
+private fun DrawScope.drawOrbitBackdrop(colors: AppColors, canvasSize: Size) {
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(colors.bgStart, colors.bgMid, colors.bgEnd),
+            startY = 0f,
+            endY = canvasSize.height
+        ),
+        size = canvasSize
+    )
+    // 右上柔光（原 TopEnd 280dp 圆角块 + offset(60, -80)）
+    drawCircle(
+        color = colors.glowColor,
+        radius = 140.dp.toPx(),
+        center = Offset(canvasSize.width - 80.dp.toPx(), 60.dp.toPx())
+    )
+    // 左下柔光（原 BottomStart 220dp 圆角块 + offset(-80, 160)）
+    drawCircle(
+        color = colors.glowColorDark,
+        radius = 110.dp.toPx(),
+        center = Offset(30.dp.toPx(), canvasSize.height + 50.dp.toPx())
+    )
 }
 
 // ═══════════════════════════════════════════════════
@@ -547,9 +577,10 @@ private fun BottomNavigationBar(
     // Floating indicator (AnimatedBottomBar style): animate the *slot* (0f..n-1)
     // instead of each pill's alpha, then derive the offset from the tab width.
     // The value is read inside the offset lambda, so sliding is layout-only.
+    // 视觉层改造：缓动换 GlassMotion 的 spring（无回弹过冲），节奏仍是「贴着手指走」。
     val slot by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = tween(durationMillis = 380, easing = HarmonyEasing),
+        animationSpec = GlassMotion.settleSpring(),
         label = "navSlot"
     )
 
@@ -558,14 +589,15 @@ private fun BottomNavigationBar(
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        // ── Flat nav bar (no glass) ────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(colors.navGlass)
-                .border(0.5.dp, colors.navGlassBorder, shape)
-                .padding(6.dp)
+        // ── 液态玻璃导航条 ────────────────────────────────────────────
+        // 悬浮胶囊 + 背景模糊（HIGH/BALANCED 模糊、LITE 退化成半透明填充）+ 玻璃描边。
+        // tab 数量 / 页名 / 点击回调全部沿用上面的 items 与 onTabSelected。
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            radius = 24.dp,
+            shape = shape,
+            shadowElevation = 12.dp,
+            contentPadding = PaddingValues(6.dp)
         ) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -899,14 +931,17 @@ private fun ConfigTab(
 
         // ── Apply / Stop Button ──
         // 运行中只剩「停止服务」可用（配置字段锁死，但必须能停）。
+        val ctaShape = RoundedCornerShape(14.dp)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(ctaShape)
                 .then(
                     if (locked) Modifier.background(colors.dangerBg)
                     else Modifier.background(colors.accentGradient)
                 )
+                // 玻璃高光/描边（品牌渐变与危险色保持，只叠材质）
+                .glassSurface(radius = 14.dp, shape = ctaShape, intensity = 0.5f)
                 .clickable {
                     if (locked) {
                         onStopService()
@@ -1263,11 +1298,13 @@ fun AboutPage(
                 Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
             )
     ) {
-        // Back control + title
+        // Back control + title（顶栏玻璃，与二级页统一）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .glassSurface(radius = 16.dp, intensity = 0.9f)
+                .padding(horizontal = 2.dp, vertical = 2.dp)
         ) {
             HmBackGlyph(
                 onBack = onBack,

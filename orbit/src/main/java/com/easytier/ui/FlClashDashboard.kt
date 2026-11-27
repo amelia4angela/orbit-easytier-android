@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
@@ -285,6 +286,8 @@ fun FlClashStatusCard(
         )
     )
     val cardShape = RoundedCornerShape(20.dp)
+    // 玻璃强度：深色下给足高光，浅色下压低一点，别把状态色洗白。
+    val glassIntensity = if (isDark) 0.55f else 0.22f
 
     Column(
         modifier = modifier
@@ -298,7 +301,8 @@ fun FlClashStatusCard(
             )
             .clip(cardShape)
             .background(gradient)
-            .border(0.5.dp, colors.glassHighlight, cardShape)
+            // 玻璃高光/描边叠在状态色之上；不模糊 —— 卡片不采样背景，避免与页面玻璃嵌套模糊
+            .glassSurface(radius = 20.dp, shape = cardShape, intensity = glassIntensity)
             .padding(16.dp)
     ) {
         Row(
@@ -403,6 +407,20 @@ fun FlClashStatusCard(
                         Brush.radialGradient(listOf(colors.accentLight, colors.accent))
                     }
                     drawPath(path, brush)
+                    // 玻璃高光：左上柔光 + 一圈细描边（blob 不是圆角矩形，用路径高光代替 glassSurface）
+                    drawPath(
+                        path,
+                        Brush.radialGradient(
+                            listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
+                            center = Offset(s * 0.34f, s * 0.26f),
+                            radius = s * 0.46f
+                        )
+                    )
+                    drawPath(
+                        path,
+                        color = Color.White.copy(alpha = 0.26f),
+                        style = Stroke(width = 1.dp.toPx())
+                    )
                 }
                 Text(
                     text = if (isStarting) "⋯" else if (isConnected) "■" else "▶",

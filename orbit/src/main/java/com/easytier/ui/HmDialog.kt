@@ -9,7 +9,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,13 +40,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
 
 /**
  * Orbit 的统一弹窗外壳。
  *
- * 外观：20dp 圆角 + [flGlassCard] 玻璃底 + 16sp SemiBold 标题 + 内容区。
+ * 外观：20dp 圆角 + 液态玻璃面板（不透明底 + glassSurface 薄雾/顶部高光/分段描边）
+ * + 16sp SemiBold 标题 + 内容区。
  * 动效：与 [NodeEditDialog] 一致 —— fadeIn + scaleIn(0.96) 240ms 线性进出，
  * 退出时 200ms；内部 `mounted` 标记让 Dialog 留到退出动画播完。
  *
@@ -63,6 +65,10 @@ fun HmDialog(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = currentColors()
+    val dark = LocalIsDarkTheme.current
+    // Dialog 是独立窗口，无法采样/模糊活动背景 → 用「不透明底 + 玻璃薄雾」保证正文可读。
+    val panelShape = RoundedCornerShape(20.dp)
+    val glassTint = if (dark) 0.55f else 0.28f
 
     // Keep the Dialog mounted until the exit animation finishes.
     var mounted by remember { mutableStateOf(false) }
@@ -92,7 +98,14 @@ fun HmDialog(
                     .widthIn(max = maxWidth)
                     .fillMaxWidth()
                     .padding(horizontal = horizontalPadding)
-                    .flGlassCard(colors, 20.dp)
+                    // 不透明底（带圆角，正文始终可读）+ 玻璃薄雾/顶部高光/分段描边。
+                    .background(colors.surface, panelShape)
+                    .glassSurface(
+                        radius = 20.dp,
+                        shape = panelShape,
+                        intensity = glassTint,
+                        shadowElevation = 6.dp
+                    )
                     .padding(16.dp),
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
             ) {
@@ -120,7 +133,7 @@ fun HmDialogActionRow(content: @Composable RowScope.() -> Unit) {
     )
 }
 
-/** 主按钮：accent 实心，圆角 12，白字 13sp SemiBold；[danger] = 危险操作（红底）。 */
+/** 主按钮：accent 实心（叠玻璃高光/描边），圆角 12，白字 13sp SemiBold；[danger] = 危险操作（红底）。 */
 @Composable
 fun HmDialogPrimaryButton(
     text: String,
@@ -130,6 +143,7 @@ fun HmDialogPrimaryButton(
     onClick: () -> Unit
 ) {
     val colors = currentColors()
+    val shape = RoundedCornerShape(12.dp)
     val container: androidx.compose.ui.graphics.Brush = when {
         !enabled -> androidx.compose.ui.graphics.SolidColor(colors.accent.copy(alpha = 0.35f))
         danger -> androidx.compose.ui.graphics.SolidColor(colors.dangerText)
@@ -137,8 +151,10 @@ fun HmDialogPrimaryButton(
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(shape)
             .background(container)
+            // 品牌色/危险红底不动，只加一层玻璃高光 + 描边
+            .glassSurface(radius = 12.dp, shape = shape, intensity = 0.45f)
             .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center
@@ -152,7 +168,7 @@ fun HmDialogPrimaryButton(
     }
 }
 
-/** 次按钮：描边 + 透明底，圆角 12。 */
+/** 次按钮：玻璃底 + 描边，圆角 12。 */
 @Composable
 fun HmDialogSecondaryButton(
     text: String,
@@ -160,11 +176,13 @@ fun HmDialogSecondaryButton(
     onClick: () -> Unit
 ) {
     val colors = currentColors()
+    val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.inputBg)
-            .border(0.5.dp, colors.inputBorder, RoundedCornerShape(12.dp))
+            // 浅色下 inputBg 是浅灰、深色下是 6% 白 —— 先铺它保证按钮与面板有对比，
+            // 再叠玻璃薄雾/顶部高光/描边（不模糊，弹窗里没有可采样的背景）。
+            .background(colors.inputBg, shape)
+            .glassSurface(radius = 12.dp, shape = shape, intensity = 1.15f)
             .clickable { onClick() }
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center

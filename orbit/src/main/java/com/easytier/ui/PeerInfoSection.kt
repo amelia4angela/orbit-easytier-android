@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.components.glassStable
 import com.easytier.ui.theme.*
 
 data class PeerInfoItem(
@@ -55,8 +56,8 @@ fun PeerInfoSection(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.surface)
+            // 节点列表属于「内容卡」→ 稳定玻璃材质（无模糊），保证多行信息可读
+            .glassStable(radius = 16.dp, shadowElevation = 2.dp)
             .padding(4.dp)
     ) {
         Column {

@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -31,8 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -58,10 +61,17 @@ data class HmDropdownOption(
 /**
  * 统一下拉选择字段（语言 / 内存限制 / 加密算法 / 压缩算法共用）。
  *
- * 外观与 [HmTextField] / [HmToggle] 同一套语汇：左侧标签（+ 当前值），右侧 `▶`
- * 三角，展开时旋转 90° 变 `▼`。点击在**行下方**弹出锚定的弹层（[Popup]，不遮全屏）：
- * 16dp 圆角 + [flGlassCard] 玻璃底 + 细边框，单选高亮，点选即生效并收起，点外部关闭。
- * 入场 220ms：从上往下 8dp + fade，全部走 [HarmonyEasing]；弹出空间不够时向上翻。
+ * 外观与 [HmTextField] / [HmToggle] 同一套语汇：左侧标签（+ 当前值），右侧一个由
+ * 本组件自绘的三角图标（[DropdownTriangle]，展开时旋转 90°）。
+ *
+ * 三角为什么不用 `Text("▶")`：U+25B6 属于「可 emoji 表现」的字符，Android 会用
+ * 彩色 emoji 字体渲染它，`Text(color = …)` 会被忽略——深色主题下就成了一个深灰
+ * 三角，看起来像图标丢了。改成 Canvas 画 Path 后颜色、大小、旋转都完全可控。
+ *
+ * 点击在**行右侧**弹出锚定的小弹层（[Popup]，不遮全屏）：右边缘与行右端对齐，
+ * 宽度按内容自适应（160–220dp，不再与整行同宽）；16dp 圆角 + [flGlassCard] 玻璃底
+ * + 细边框，单选高亮，点选即生效并收起，点外部关闭。入场 220ms：从上往下 8dp +
+ * fade，全部走 [HarmonyEasing]；下方空间不够时向上翻，水平方向夹在窗口内。
  *
  * [card] = true 按设置列表的卡片样式渲染（surface 底 + 12dp 圆角 + 16dp 内边距），
  * 用于替代 [SettingsNavRow]；false 按输入框样式描边渲染，用于表单内部。
@@ -94,9 +104,6 @@ fun HmDropdownField(
     val gapPx = with(density) { 6.dp.roundToPx() }
     val slidePx = with(density) { 8.dp.roundToPx() }
 
-    var rowWidthPx by remember { mutableStateOf(0) }
-    val popupWidth = with(density) { rowWidthPx.toDp() }.coerceAtLeast(180.dp)
-
     val currentLabel = options.getOrNull(selectedIndex)?.label
         ?: fallbackValue.ifEmpty { options.firstOrNull()?.label.orEmpty() }
 
@@ -121,7 +128,6 @@ fun HmDropdownField(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { rowWidthPx = it.size.width }
                 .then(
                     if (card) {
                         Modifier
@@ -180,11 +186,9 @@ fun HmDropdownField(
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(
-                    text = "▶",
+                DropdownTriangle(
                     color = colors.textTertiary,
-                    fontSize = 10.sp,
-                    modifier = Modifier.graphicsLayer { rotationZ = triangleAngle }
+                    angle = triangleAngle
                 )
             }
 
@@ -203,7 +207,9 @@ fun HmDropdownField(
                     ) {
                         Column(
                             modifier = Modifier
-                                .width(popupWidth)
+                                // 小弹层：按内容自适应，下限 160dp、上限 220dp，
+                                // 不再跟着整行宽度走；位置由下方 PositionProvider 右对齐。
+                                .widthIn(min = 160.dp, max = 220.dp)
                                 .flGlassCard(colors, 16.dp)
                                 .padding(vertical = 6.dp, horizontal = 6.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -277,7 +283,6 @@ fun HmDropdownField(
                 color = colors.textTertiary,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
-                maxLines = 2,
                 modifier = Modifier.padding(start = 2.dp, top = 3.dp)
             )
         }
@@ -285,8 +290,11 @@ fun HmDropdownField(
 }
 
 /**
- * 弹层锚定在行下方 6dp 处；底部空间不够（会跑出屏幕）时向上翻转，
- * 水平方向夹在窗口内。宽度由调用方设成行宽，所以看起来像「从行里展开」。
+ * 弹层锚定在行下方 6dp 处，**右边缘对齐行的右端**；底部空间不够（会跑出屏幕）
+ * 时向上翻转，水平方向再夹一次窗口边界。
+ *
+ * 宽度不再等于行宽，所以 x 用 `anchorBounds.right - popupContentSize.width` 现算，
+ * 这样「按内容自适应宽度」的弹层也能贴住行右侧。
  */
 private class HmDropdownPositionProvider(private val gapPx: Int) : PopupPositionProvider {
     override fun calculatePosition(
@@ -303,7 +311,38 @@ private class HmDropdownPositionProvider(private val gapPx: Int) : PopupPosition
             (anchorBounds.top - popupContentSize.height - gapPx).coerceAtLeast(0)
         }
         val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
-        val x = anchorBounds.left.coerceIn(0, maxX)
+        val rightAligned = anchorBounds.right - popupContentSize.width
+        val x = rightAligned.coerceIn(0, maxX)
         return IntOffset(x, y)
+    }
+}
+
+/**
+ * 下拉三角图标：Canvas + Path 自绘。
+ *
+ * 不用 `Text("▶")` 的原因：U+25B6 是「可 emoji 表现」字符，Android 会走彩色 emoji
+ * 字体渲染，`Text(color = …)` 被忽略（深色主题下等于看不见）。自绘后颜色/尺寸/旋转
+ * 完全由本组件控制，四个下拉（语言 / 内存 / 加密 / 压缩）外观统一。
+ */
+@Composable
+private fun DropdownTriangle(
+    color: Color,
+    angle: Float,
+    size: androidx.compose.ui.unit.Dp = 8.dp
+) {
+    Canvas(
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer { rotationZ = angle }
+    ) {
+        val w = this.size.width
+        val h = this.size.height
+        val path = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(w, h / 2f)
+            lineTo(0f, h)
+            close()
+        }
+        drawPath(path, color)
     }
 }

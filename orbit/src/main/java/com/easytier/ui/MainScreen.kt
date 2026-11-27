@@ -96,6 +96,32 @@ fun MainScreen(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
+
+    // ── Update check state（提升到 MainScreen，启动检查与关于页手动检查共用）──
+    // 之前 updateInfo / updateDialogVisible 住在 AboutPage 内部：一进关于页就重置，
+    // 启动时的静默检查也没地方放。现在两者都归这里，弹窗也只在 MainScreen 渲染一次。
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val currentVersion = remember { appVersionName(ctx) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateDialogVisible by remember { mutableStateOf(false) }
+    var autoCheckUpdate by remember { mutableStateOf(autoCheckUpdateEnabled(ctx)) }
+
+    // 启动后 5s 静默检查一次：开关关闭就跳过；网络/解析失败一律静默忽略。
+    LaunchedEffect(Unit) {
+        delay(5_000)
+        if (!autoCheckUpdateEnabled(ctx)) return@LaunchedEffect
+        try {
+            val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+            if (isNewerVersion(info.tag, currentVersion)) {
+                updateInfo = info
+                updateDialogVisible = true
+            }
+        } catch (_: Exception) {
+            // 静默：启动检查不因为网络问题打扰用户
+        }
+    }
+
     var currentTab by remember { mutableStateOf(Tab.STATUS) }
     // Sub-page stack: Settings → General → Permissions, About → Privacy Policy.
     val pageStack = remember { mutableStateListOf<SettingsPage>() }
@@ -198,6 +224,16 @@ fun MainScreen(
                             isConnected = connectionState.status == ConnectionStatus.RUNNING
                                     || connectionState.status == ConnectionStatus.NO_TUN,
                             connectionStartTime = connectionStartTime,
+                            autoCheckUpdate = autoCheckUpdate,
+                            onAutoCheckUpdateChange = { enabled ->
+                                autoCheckUpdate = enabled
+                                setAutoCheckUpdateEnabled(ctx, enabled)
+                            },
+                            // 手动检查到新版本 → 同一条状态 + 同一个弹窗
+                            onNewVersionFound = { info ->
+                                updateInfo = info
+                                updateDialogVisible = true
+                            },
                             onBack = { closePage() },
                             onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
                         )
@@ -279,6 +315,44 @@ fun MainScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+
+        // ── 更新弹窗（唯一实例）──
+        // 启动静默检查与关于页手动检查都写同一份 updateInfo/updateDialogVisible，
+        // 所以弹窗放在最外层：不管用户当前在哪个 Tab / 二级页都能弹出来。
+        UpdateDialog(
+            visible = updateDialogVisible,
+            info = updateInfo,
+            currentVersion = currentVersion,
+            langZh = langZh,
+            onDownloadApk = {
+                val info = updateInfo
+                val apkUrl = info?.apkUrl
+                if (info == null || apkUrl.isNullOrBlank()) {
+                    Toast.makeText(
+                        ctx,
+                        T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
+                }
+            },
+            onOpenBrowser = {
+                val url = updateInfo?.htmlUrl
+                if (!url.isNullOrBlank()) {
+                    try {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (_: Exception) {
+                        Toast.makeText(
+                            ctx,
+                            T("无法打开浏览器", "Cannot open browser", langZh),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
+            onDismiss = { updateDialogVisible = false }
+        )
     }
 }
 
@@ -1006,23 +1080,20 @@ fun AboutPage(
     langZh: Boolean,
     isConnected: Boolean = false,
     connectionStartTime: Long = 0L,
+    autoCheckUpdate: Boolean = true,
+    onAutoCheckUpdateChange: (Boolean) -> Unit = {},
+    onNewVersionFound: (UpdateInfo) -> Unit = {},
     onBack: () -> Unit,
     onOpenPrivacy: () -> Unit = {}
 ) {
     val ctx = LocalContext.current
-    val version: String = remember {
-        try {
-            val pkg = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
-            pkg.versionName ?: "0.1.5"
-        } catch (_: Exception) { "0.1.5" }
-    }
+    val version: String = remember { appVersionName(ctx) }
     val colors = currentColors()
     val scrollState = rememberScrollState()
 
-    // ── Update check state (About is the single entry point) ──
+    // 手动检查的按钮状态留在本页；updateInfo / 弹窗状态在 MainScreen（启动检查共用）。
+    var updateStatus by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
-    var updateDialogVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Live uptime ticker
@@ -1191,10 +1262,6 @@ fun AboutPage(
                     // Version info
                     Spacer(Modifier.height(10.dp))
 
-                    var updateStatus by remember { mutableStateOf<String?>(null) }
-                    var checking by remember { mutableStateOf(false) }
-                    val scope = rememberCoroutineScope()
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1236,9 +1303,8 @@ fun AboutPage(
                                             try {
                                                 val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
                                                 if (isNewerVersion(info.tag, version)) {
-                                                    // New version → update dialog (release notes + downloads)
-                                                    updateInfo = info
-                                                    updateDialogVisible = true
+                                                    // 新版本 → 交给 MainScreen 的统一弹窗（release notes + 下载）
+                                                    onNewVersionFound(info)
                                                 } else {
                                                     updateStatus = "latest"
                                                 }
@@ -1264,6 +1330,27 @@ fun AboutPage(
                                 }
                             }
                         }
+                    }
+
+                    // 自动检查更新 —— 状态在 MainScreen，落盘 SharedPreferences(auto_check_update)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.surfaceDim)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        HmToggle(
+                            label = T("自动检查更新", "Auto-check updates", langZh),
+                            checked = autoCheckUpdate,
+                            onCheckedChange = onAutoCheckUpdateChange,
+                            colors = colors,
+                            hint = T(
+                                "启动后静默检查一次新版本；有更新才弹提示",
+                                "Silently checks once after launch; only alerts on a new version",
+                                langZh
+                            )
+                        )
                     }
 
                     // Privacy policy — read-only page (same text as the first-launch gate)
@@ -1338,42 +1425,6 @@ fun AboutPage(
                         Spacer(Modifier.height(8.dp))
                     }
                 }
-
-                // Update dialog — release notes + direct/browser download
-                UpdateDialog(
-                    visible = updateDialogVisible,
-                    info = updateInfo,
-                    currentVersion = version,
-                    langZh = langZh,
-                    onDownloadApk = {
-                        val info = updateInfo
-                        val apkUrl = info?.apkUrl
-                        if (info == null || apkUrl.isNullOrBlank()) {
-                            Toast.makeText(
-                                ctx,
-                                T("该版本未提供 APK 资源", "No APK asset in this release", langZh),
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            startApkDownload(ctx, apkUrl, info.tag, scope, langZh)
-                        }
-                    },
-                    onOpenBrowser = {
-                        val url = updateInfo?.htmlUrl
-                        if (!url.isNullOrBlank()) {
-                            try {
-                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    ctx,
-                                    T("无法打开浏览器", "Cannot open browser", langZh),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onDismiss = { updateDialogVisible = false }
-                )
             }
         }
     }
@@ -1412,6 +1463,27 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
 
 private const val UPDATE_API =
     "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
+
+/** 「自动检查更新」偏好：与 MainActivity 的其他状态放同一个 SharedPreferences 文件。 */
+private const val UPDATE_PREFS = "easytier_state"
+private const val KEY_AUTO_CHECK_UPDATE = "auto_check_update"
+
+/** 当前安装包的 versionName；读不到时退回 "0.1.5"（与关于页展示保持一致）。 */
+private fun appVersionName(ctx: Context): String = try {
+    ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "0.1.5"
+} catch (_: Exception) {
+    "0.1.5"
+}
+
+/** 自动检查更新开关，默认开。 */
+private fun autoCheckUpdateEnabled(ctx: Context): Boolean =
+    ctx.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_AUTO_CHECK_UPDATE, true)
+
+private fun setAutoCheckUpdateEnabled(ctx: Context, enabled: Boolean) {
+    ctx.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE).edit()
+        .putBoolean(KEY_AUTO_CHECK_UPDATE, enabled).apply()
+}
 
 data class UpdateInfo(
     val tag: String,

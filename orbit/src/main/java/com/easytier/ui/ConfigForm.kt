@@ -250,13 +250,35 @@ fun ConfigForm(
                     onDismiss = { nodeDialogVisible = false }
                 )
 
-                // Local IP
+                // ── DHCP 自动 IP + 本地 IP（成组相邻）──
+                // DHCP 开启 = 由核心自动分配地址 → 本地 IP 输入框置灰只读（值保留不清空）；
+                // 关闭后可手动编辑。
+                HmToggle(
+                    checked = config.dhcp,
+                    onCheckedChange = { onConfigChange(config.copy(dhcp = it)) },
+                    label = T("DHCP 自动 IP", "DHCP Auto IP", langZh),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = colors,
+                    hint = T(
+                        "由 EasyTier 核心自动分配本地 IP",
+                        "Let the EasyTier core assign the local IP",
+                        langZh
+                    )
+                )
                 HmTextField(
                     value = config.ipAddress,
                     onValueChange = { onConfigChange(config.copy(ipAddress = it)) },
                     label = T("本地 IP", "Local IP", langZh),
                     placeholder = T("例如 10.0.0.2/24", "e.g. 10.0.0.2/24", langZh),
-                    colors = colors
+                    colors = colors,
+                    enabled = !config.dhcp,
+                    hint = if (config.dhcp) {
+                        T(
+                            "DHCP 已开启，本地 IP 自动获取；关闭 DHCP 后可编辑",
+                            "DHCP is on, local IP is assigned automatically",
+                            langZh
+                        )
+                    } else null
                 )
 
                 // Device identity
@@ -272,16 +294,6 @@ fun ConfigForm(
                     onValueChange = { onConfigChange(config.copy(instanceName = it)) },
                     label = T("实例标识", "Instance ID", langZh),
                     placeholder = T("例如 设备名（内部标识，留空自动）", "e.g. my-device (internal ID, auto if empty)", langZh),
-                    colors = colors
-                )
-
-                // DHCP toggle (No TUN moved to Advanced Options)
-                Spacer(Modifier.height(4.dp))
-                HmToggle(
-                    checked = config.dhcp,
-                    onCheckedChange = { onConfigChange(config.copy(dhcp = it)) },
-                    label = T("DHCP 自动 IP", "DHCP Auto IP", langZh),
-                    modifier = Modifier.fillMaxWidth(),
                     colors = colors
                 )
             }
@@ -770,23 +782,26 @@ internal fun HmTextField(
     password: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     colors: AppColors,
-    hint: String? = null
+    hint: String? = null,
+    enabled: Boolean = true
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    // Animate border color on focus
+    // Animate border color on focus; a disabled field never shows the accent border.
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) colors.accent else colors.inputBorder,
+        targetValue = if (enabled && isFocused) colors.accent else colors.inputBorder,
         animationSpec = tween(200),
         label = "borderColor"
     )
     val bgColor = ComposeColor.Transparent
+    val textColor = if (enabled) colors.textPrimary else colors.textTertiary.copy(alpha = 0.7f)
+    val hintColor = if (enabled) colors.textTertiary else colors.textTertiary.copy(alpha = 0.6f)
 
     Column(modifier = modifier) {
         if (label.isNotEmpty()) {
             Text(
                 text = label,
-                color = colors.textTertiary,
+                color = hintColor,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
             )
@@ -797,7 +812,7 @@ internal fun HmTextField(
                 .clip(RoundedCornerShape(10.dp))
                 .background(bgColor)
                 .border(
-                    width = if (isFocused) 1.dp else 0.5.dp,
+                    width = if (enabled && isFocused) 1.dp else 0.5.dp,
                     color = borderColor,
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -807,15 +822,16 @@ internal fun HmTextField(
             if (value.isEmpty()) {
                 Text(
                     text = placeholder,
-                    color = colors.textTertiary.copy(alpha = 0.5f),
+                    color = colors.textTertiary.copy(alpha = if (enabled) 0.5f else 0.35f),
                     fontSize = 13.sp
                 )
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
+                enabled = enabled,
                 textStyle = TextStyle(
-                    color = colors.textPrimary,
+                    color = textColor,
                     fontSize = 13.sp
                 ),
                 cursorBrush = SolidColor(colors.accentLight),
@@ -828,10 +844,9 @@ internal fun HmTextField(
         if (hint != null) {
             Text(
                 text = hint,
-                color = colors.textTertiary,
+                color = hintColor,
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
-                maxLines = 2,
                 modifier = Modifier.padding(start = 2.dp, top = 3.dp)
             )
         }
@@ -902,6 +917,8 @@ fun HmToggle(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // weight(1f)：文字区吃掉开关之外的全部宽度，不会被右侧 50dp 开关挤压；
+        // hint 不限制行数（之前 maxLines = 2 会把长说明截断，例如省电模式）。
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 label,
@@ -914,7 +931,6 @@ fun HmToggle(
                     color = colors.textTertiary,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
-                    maxLines = 2,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }

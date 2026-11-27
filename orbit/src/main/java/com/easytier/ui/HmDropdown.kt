@@ -79,6 +79,7 @@ data class HmDropdownOption(
 @Composable
 fun HmDropdownField(
     label: String,
+    icon: String? = null,
     options: List<HmDropdownOption>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
@@ -153,6 +154,14 @@ fun HmDropdownField(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (card) {
+                    if (icon != null) {
+                        Text(
+                            text = icon,
+                            color = if (enabled) colors.textSecondary else colors.textTertiary.copy(alpha = 0.7f),
+                            fontSize = 20.sp
+                        )
+                        Spacer(Modifier.width(12.dp))
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,

@@ -291,8 +291,8 @@ private fun memoryLevelHint(level: String, langZh: Boolean): String = when (leve
         langZh
     )
     com.easytier.RuntimeTuning.MEMORY_OFF -> T(
-        "不做额外收紧，行为与标准一致",
-        "No extra tightening — same as Standard",
+        "不做任何限制",
+        "No limits at all",
         langZh
     )
     else -> T(

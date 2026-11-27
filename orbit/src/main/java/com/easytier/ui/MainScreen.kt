@@ -1016,6 +1016,7 @@ private fun MoreTab(
         // Language — 当前值 + 三角指示，点开行下方弹层（简体中文 / English）
         HmDropdownField(
             label = T("语言", "Language", langZh),
+            icon = "A",
             options = listOf(
                 HmDropdownOption(label = "简体中文", value = "zh"),
                 HmDropdownOption(label = "English", value = "en")

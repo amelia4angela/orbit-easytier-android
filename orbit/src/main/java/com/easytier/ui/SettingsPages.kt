@@ -108,6 +108,8 @@ fun SettingsSubPage(
 @Composable
 fun GeneralPage(
     langZh: Boolean,
+    config: ConfigState,
+    onConfigChange: (ConfigState) -> Unit,
     onConfigServer: () -> Unit,
     onRestartCore: () -> Unit,
     onOpenPermissions: () -> Unit,
@@ -115,6 +117,10 @@ fun GeneralPage(
 ) {
     val colors = currentColors()
     var logEnabled by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
+    var memoryDialogVisible by remember { mutableStateOf(false) }
+
+    val memoryLevel = config.memoryLimit.ifEmpty { com.easytier.RuntimeTuning.MEMORY_STANDARD }
+    val memoryLabel = memoryLevelLabel(memoryLevel, langZh)
 
     SettingsSubPage(title = T("常规", "General", langZh), langZh = langZh, onBack = onBack) {
         // 1. Config server
@@ -199,7 +205,51 @@ fun GeneralPage(
             }
         }
 
-        // 4. Permissions entry
+        // 4. Power saving — slows the polling/notification cadence in the background
+        //    and injects EasyTier power flags (disable_upnp) into the generated TOML.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔋", fontSize = 20.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        T("省电模式", "Power Saving", langZh),
+                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                HmToggle(
+                    label = T("后台降频", "Slow down in background", langZh),
+                    checked = config.powerSaving,
+                    onCheckedChange = { onConfigChange(config.copy(powerSaving = it)) },
+                    hint = T(
+                        "熄屏/后台时状态刷新从 1s 放宽到 60s、通知 60s 一次；同时关闭 EasyTier 的 UPnP 探测。回到前台立即恢复",
+                        "When backgrounded: status every 60s instead of 1s, notification every 60s, UPnP probing off. Restored instantly in foreground",
+                        langZh
+                    ),
+                    colors = colors
+                )
+            }
+        }
+
+        // 5. Memory limit — log buffer / polling profile
+        SettingsNavRow(
+            icon = "▤",
+            title = T("内存限制", "Memory Limit", langZh),
+            subtitle = memoryLevelHint(memoryLevel, langZh),
+            value = memoryLabel,
+            colors = colors,
+            onClick = { memoryDialogVisible = true }
+        )
+
+        // 6. Permissions entry
         SettingsNavRow(
             icon = "🛡",
             title = T("权限管理", "Permissions", langZh),
@@ -207,6 +257,230 @@ fun GeneralPage(
             colors = colors,
             onClick = onOpenPermissions
         )
+    }
+
+    // Memory-limit picker — three levels, each with its own one-line explanation
+    HmChoiceDialog(
+        visible = memoryDialogVisible,
+        title = T("内存限制", "Memory Limit", langZh),
+        options = listOf(
+            HmDialogChoice(
+                label = T("标准", "Standard", langZh),
+                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STANDARD, langZh)
+            ),
+            HmDialogChoice(
+                label = T("严格", "Strict", langZh),
+                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STRICT, langZh)
+            ),
+            HmDialogChoice(
+                label = T("关闭", "Off", langZh),
+                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_OFF, langZh)
+            )
+        ),
+        selectedIndex = when (memoryLevel) {
+            com.easytier.RuntimeTuning.MEMORY_STRICT -> 1
+            com.easytier.RuntimeTuning.MEMORY_OFF -> 2
+            else -> 0
+        },
+        cancelLabel = T("取消", "Cancel", langZh),
+        onSelect = { idx ->
+            val level = when (idx) {
+                1 -> com.easytier.RuntimeTuning.MEMORY_STRICT
+                2 -> com.easytier.RuntimeTuning.MEMORY_OFF
+                else -> com.easytier.RuntimeTuning.MEMORY_STANDARD
+            }
+            onConfigChange(config.copy(memoryLimit = level))
+            memoryDialogVisible = false
+        },
+        onDismiss = { memoryDialogVisible = false }
+    )
+}
+
+/** 档位名（行右侧展示）。 */
+private fun memoryLevelLabel(level: String, langZh: Boolean): String = when (level) {
+    com.easytier.RuntimeTuning.MEMORY_STRICT -> T("严格", "Strict", langZh)
+    com.easytier.RuntimeTuning.MEMORY_OFF -> T("关闭", "Off", langZh)
+    else -> T("标准", "Standard", langZh)
+}
+
+/** 档位说明（一行 hint，行副标题与选择弹窗共用）。 */
+private fun memoryLevelHint(level: String, langZh: Boolean): String = when (level) {
+    com.easytier.RuntimeTuning.MEMORY_STRICT -> T(
+        "日志 30 条 / 6 小时，轮询 2s、通知 10s、日志页 5s",
+        "30 log lines / 6h; poll 2s, notify 10s, logs 5s",
+        langZh
+    )
+    com.easytier.RuntimeTuning.MEMORY_OFF -> T(
+        "不做额外收紧，行为与标准一致",
+        "No extra tightening — same as Standard",
+        langZh
+    )
+    else -> T(
+        "日志 100 条 / 3 天，轮询 1s、通知 5s（现状）",
+        "100 log lines / 3 days; poll 1s, notify 5s (current)",
+        langZh
+    )
+}
+
+// ═══════════════════════════════════════════════════
+//  Theme — light / dark / follow system (second-level page)
+// ═══════════════════════════════════════════════════
+
+/**
+ * 主题二级页：三个单选模式（浅色 / 深色 / 跟随系统）+ 每项一句说明，
+ * 页面底部预留「更多主题」占位卡片，之后按卡片扩主题不用改导航结构。
+ */
+@Composable
+fun ThemePage(
+    langZh: Boolean,
+    isDarkTheme: Boolean,
+    dynamicColor: Boolean,
+    onToggleTheme: () -> Unit,
+    onToggleDynamic: () -> Unit,
+    onBack: () -> Unit
+) {
+    val colors = currentColors()
+    val selectedIndex = when {
+        dynamicColor -> 2
+        isDarkTheme -> 1
+        else -> 0
+    }
+    fun select(index: Int) {
+        when (index) {
+            0 -> { if (dynamicColor) onToggleDynamic(); if (isDarkTheme) onToggleTheme() }
+            1 -> { if (dynamicColor) onToggleDynamic(); if (!isDarkTheme) onToggleTheme() }
+            2 -> if (!dynamicColor) onToggleDynamic()
+        }
+    }
+
+    SettingsSubPage(title = T("主题", "Theme", langZh), langZh = langZh, onBack = onBack) {
+        Text(
+            T(
+                "选择外观模式；「跟随系统」会随系统的深色/浅色设置自动切换。",
+                "Pick a look. \"System\" follows the device's dark/light setting.",
+                langZh
+            ),
+            color = colors.textTertiary,
+            fontSize = 12.sp
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(14.dp))
+                .padding(vertical = 6.dp, horizontal = 6.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                ThemeOptionRow(
+                    title = T("浅色", "Light", langZh),
+                    hint = T("始终使用浅色背景", "Always light", langZh),
+                    selected = selectedIndex == 0,
+                    colors = colors,
+                    onClick = { select(0) }
+                )
+                ThemeOptionRow(
+                    title = T("深色", "Dark", langZh),
+                    hint = T("始终使用深色背景，夜间更护眼", "Always dark — easier at night", langZh),
+                    selected = selectedIndex == 1,
+                    colors = colors,
+                    onClick = { select(1) }
+                )
+                ThemeOptionRow(
+                    title = T("跟随系统", "System", langZh),
+                    hint = T("跟随系统深浅色自动切换", "Follow the system appearance", langZh),
+                    selected = selectedIndex == 2,
+                    colors = colors,
+                    onClick = { select(2) }
+                )
+            }
+        }
+
+        // 预留位：以后的主题卡片（配色包 / 图标风格）挂在这里
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.inputBg.copy(alpha = 0.5f))
+                .border(0.5.dp, colors.inputBorder, RoundedCornerShape(14.dp))
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "🎨 " + T("更多主题", "More themes", langZh),
+                    color = colors.textSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    T(
+                        "主题市场与自定义配色开发中，后续会在这里以卡片形式选择。",
+                        "Theme gallery and custom palettes are in progress; they will show up here as cards.",
+                        langZh
+                    ),
+                    color = colors.textTertiary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeOptionRow(
+    title: String,
+    hint: String,
+    selected: Boolean,
+    colors: AppColors,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) colors.accentContainer else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                color = if (selected) colors.accentLight else colors.textPrimary,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+            )
+            Text(
+                hint,
+                color = colors.textTertiary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(RoundedCornerShape(50))
+                .border(
+                    1.5.dp,
+                    if (selected) colors.accent else colors.inputBorder,
+                    RoundedCornerShape(50)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(colors.accent)
+                )
+            }
+        }
     }
 }
 
@@ -642,38 +916,17 @@ fun PrivacyPolicyPage(
                     .padding(bottom = 20.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.accentGradient)
-                        .clickable { onAccept() }
-                        .padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        T("同意并继续", "Agree & Continue", langZh),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.inputBg)
-                        .border(0.5.dp, colors.inputBorder, RoundedCornerShape(12.dp))
-                        .clickable { onDecline() }
-                        .padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        T("不同意", "Decline", langZh),
-                        color = colors.textSecondary,
-                        fontSize = 14.sp
-                    )
-                }
+                // 按钮与统一弹窗组件对齐：主按钮 accent 实心、次按钮描边，圆角 12
+                HmDialogPrimaryButton(
+                    text = T("同意并继续", "Agree & Continue", langZh),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onAccept
+                )
+                HmDialogSecondaryButton(
+                    text = T("不同意", "Decline", langZh),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onDecline
+                )
                 Text(
                     T(
                         "不同意将退出应用，Orbit 无法在未同意隐私政策的情况下使用。",

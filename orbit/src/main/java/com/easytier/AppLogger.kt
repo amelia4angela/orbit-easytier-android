@@ -11,15 +11,21 @@ import kotlin.collections.ArrayDeque
  *
  * 治理规则：
  * - **默认关闭**：[enabled] 为 false 时 d/i/w/e 直接 return，既不进 logcat 也不进缓冲。
- * - **最多 100 条**：环形缓冲，超过 100 丢最旧。
- * - **只保留最近 3 天**：每条日志带时间戳，[getLogs] / [getLatestLines] 按时间过滤，
- *   再截取最新的若干条。
+ * - **条数 / 时长可调**：[setLimits] 由「设置 → 常规 → 内存限制」写入
+ *   （标准 100 条 / 3 天，严格 30 条 / 6 小时）。
+ * - **环形缓冲**：超过上限丢最旧；[getLogs] / [getLatestLines] 按保留时长过滤后再截尾。
  */
 object AppLogger {
-    /** 环形缓冲区上限 */
-    private const val MAX_LINES = 100
-    /** 日志保留时长：3 天 */
-    private const val MAX_AGE_MS = 3L * 24 * 60 * 60 * 1000
+    /** 默认：环形缓冲区 100 条 */
+    const val DEFAULT_MAX_LINES = 100
+    /** 默认：日志保留 3 天 */
+    const val DEFAULT_MAX_AGE_MS = 3L * 24 * 60 * 60 * 1000
+
+    @Volatile
+    private var maxLines = DEFAULT_MAX_LINES
+
+    @Volatile
+    private var maxAgeMs = DEFAULT_MAX_AGE_MS
 
     private class Entry(val timestamp: Long, val text: String)
 
@@ -29,10 +35,25 @@ object AppLogger {
     /** 是否正在收集日志（默认关）。UI 可读此值决定是否提示「请在设置中开启」。 */
     val enabled: Boolean get() = _enabled
 
-    private val buffer = ArrayDeque<Entry>(MAX_LINES)
+    private val buffer = ArrayDeque<Entry>(DEFAULT_MAX_LINES)
+
+    /**
+     * 调整缓冲上限（内存限制档位）。收紧时立即丢掉超出的旧记录，
+     * 之后 [append] 按新上限滚动。
+     */
+    @Synchronized
+    fun setLimits(lines: Int, ageMs: Long) {
+        maxLines = lines.coerceIn(1, 10_000)
+        maxAgeMs = ageMs.coerceAtLeast(60_000L)
+        trim()
+    }
+
+    /** 当前生效的上限（UI 展示用） */
+    val limitLines: Int get() = maxLines
+
     private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
-    /** 打开/关闭日志收集。关闭后新日志不再进入缓冲区（已有记录保留，按 3 天规则老化）。 */
+    /** 打开/关闭日志收集。关闭后新日志不再进入缓冲区（已有记录保留，按保留时长老化）。 */
     fun setEnabled(on: Boolean) {
         _enabled = on
     }
@@ -85,19 +106,30 @@ object AppLogger {
         val now = System.currentTimeMillis()
         val time = dateFormat.format(Date(now))
         // Drop entries older than the retention window so they don't hold ring slots.
-        val cutoff = now - MAX_AGE_MS
+        val cutoff = now - maxAgeMs
         while (buffer.isNotEmpty() && buffer.first().timestamp < cutoff) {
             buffer.removeFirst()
         }
         buffer.addLast(Entry(now, "$time $level/$tag: $msg"))
-        while (buffer.size > MAX_LINES) {
+        while (buffer.size > maxLines) {
             buffer.removeFirst()
         }
     }
 
-    /** 3 天内的记录，按时间从旧到新。 */
+    /** 按当前上限裁剪（换档时调用，已在锁内）。 */
+    private fun trim() {
+        val cutoff = System.currentTimeMillis() - maxAgeMs
+        while (buffer.isNotEmpty() && buffer.first().timestamp < cutoff) {
+            buffer.removeFirst()
+        }
+        while (buffer.size > maxLines) {
+            buffer.removeFirst()
+        }
+    }
+
+    /** 保留时长内的记录，按时间从旧到新。 */
     private fun recent(): List<Entry> {
-        val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+        val cutoff = System.currentTimeMillis() - maxAgeMs
         return buffer.filter { it.timestamp >= cutoff }
     }
 

@@ -25,9 +25,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -144,10 +145,15 @@ fun ConfigForm(
                             )
                         } else {
                             config.nodes.forEachIndexed { index, node ->
-                                // Press feedback, linear on purpose: the elevation ramps straight
-                                // up/down on a fixed-shape shadow pinned to the row's own 10dp
-                                // radius. No scale is applied, so the shadow outline can never
-                                // smear, morph or overshoot while the row is tapped.
+                                // Press feedback, linear on purpose (no scale, no bouncy spring).
+                                //
+                                // 圆角 bug 的根因：之前按压态用
+                                // `Modifier.shadow(elevation = lift, shape, clip = false)`
+                                // 抬升阴影，clip = false 的 shadow 层不会裁到圆角轮廓上，
+                                // 阴影/内容在动画期间以矩形边界绘制，四个角就出现直角。
+                                // 现在把「阴影 + 背景」放进同一个 graphicsLayer，
+                                // clip = true + 同一个 10dp shape —— 常态与按压态共用
+                                // 同一条圆角轮廓，四角全程保持圆润。
                                 val interaction = remember(index) { MutableInteractionSource() }
                                 val pressed by interaction.collectIsPressedAsState()
                                 val lift by animateFloatAsState(
@@ -161,17 +167,18 @@ fun ConfigForm(
                                     label = "nodeRowBg"
                                 )
                                 val rowShape = RoundedCornerShape(10.dp)
+                                val density = LocalDensity.current
+                                val shadowTint = ComposeColor.Black.copy(alpha = 0.10f)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .shadow(
-                                            elevation = (lift * 2f).dp,
-                                            shape = rowShape,
-                                            clip = false,
-                                            ambientColor = ComposeColor.Black.copy(alpha = 0.10f),
-                                            spotColor = ComposeColor.Black.copy(alpha = 0.10f)
-                                        )
-                                        .clip(rowShape)
+                                        .graphicsLayer {
+                                            shape = rowShape
+                                            clip = true
+                                            shadowElevation = with(density) { (lift * 2f).dp.toPx() }
+                                            ambientShadowColor = shadowTint
+                                            spotShadowColor = shadowTint
+                                        }
                                         .background(rowBg)
                                         .clickable(
                                             interactionSource = interaction,

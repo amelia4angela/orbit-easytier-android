@@ -41,11 +41,11 @@ class EasyTierVpnService : VpnService() {
     private var notificationHelper: NotificationHelper? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** Update the persistent notification every 5 seconds with live IP + duration */
+    /** Refresh the persistent notification (5s normally, 60s in power-saving mode). */
     private val notificationUpdateRunnable = object : Runnable {
         override fun run() {
             updateNotification()
-            mainHandler.postDelayed(this, 5000)
+            mainHandler.postDelayed(this, com.easytier.RuntimeTuning.notificationIntervalMs)
         }
     }
 

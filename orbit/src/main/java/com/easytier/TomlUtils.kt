@@ -72,6 +72,8 @@ object TomlUtils {
             arr.put(o)
         }
         j.put("nodes", arr)
+        j.put("powerSaving", s.powerSaving)
+        j.put("memoryLimit", s.memoryLimit)
     }
 
     /**
@@ -191,7 +193,9 @@ object TomlUtils {
             dnsServer = j.optString("dnsServer"),
             dnsEnabled = j.optBoolean("dnsEnabled", false),
             extraServers = legacyExtra,
-            nodes = nodes
+            nodes = nodes,
+            powerSaving = j.optBoolean("powerSaving", false),
+            memoryLimit = j.optString("memoryLimit").ifEmpty { "standard" }
         )
     }
 
@@ -327,6 +331,18 @@ object TomlUtils {
                 val v = vip.trim()
                 if (v.isNotEmpty()) sb.append("[[exit_nodes]]\nnode = \"${escapeToml(v)}\"\n")
             }
+        }
+
+        // ── 省电模式（EasyTier 层）──
+        // EasyTier 2.6.4 没有可配置的心跳 / peer 轮询间隔（`easytier-core --help` 与
+        // 2.6.4 的 config.rs 里都没有 interval 类字段），能用且安全的是关掉 UPnP：
+        // 否则核心会周期性做 SSDP 组播和 WANIPConnection 端口映射探测，每次都会
+        // 唤醒无线电。stun_servers / lazy_p2p 会削弱 NAT 探测与打洞，这里刻意不动。
+        // 注意 flags 是嵌套表：2.6.4 的 Config 用 `flags: Option<Map>` 接收，
+        // 必须写在 [flags] 段里，顶层的裸 flag 会被 serde 静默忽略。
+        if (s.powerSaving) {
+            sb.append("\n[flags]\n")
+            sb.append("disable_upnp = true\n")
         }
 
         return sb.toString()

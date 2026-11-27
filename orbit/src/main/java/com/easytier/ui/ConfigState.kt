@@ -86,5 +86,11 @@ data class ConfigState(
     val extraServers: List<String> = emptyList(),
     // Structured server node list (primary UI). Legacy server/port/extraServers
     // above are kept in sync for older code paths.
-    val nodes: List<PeerNode> = emptyList()
+    val nodes: List<PeerNode> = emptyList(),
+
+    // ── 运行时调节（随配置持久化，MainActivity 会镜像到 SharedPreferences）──
+    /** 省电模式：后台/熄屏时降低状态轮询与通知刷新频率，并给 EasyTier 注入省电 flags。 */
+    val powerSaving: Boolean = false,
+    /** 内存限制档位："standard" | "strict" | "off"（见 RuntimeTuning）。 */
+    val memoryLimit: String = "standard"
 )

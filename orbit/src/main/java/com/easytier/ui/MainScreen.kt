@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,7 +59,7 @@ import java.io.File
 private enum class Tab { STATUS, CONFIG, LOGS, MORE }
 
 /** Settings sub-pages, pushed onto a small back stack (never exits the app). */
-private enum class SettingsPage { GENERAL, PERMISSIONS, ABOUT, PRIVACY }
+private enum class SettingsPage { GENERAL, PERMISSIONS, THEME, ABOUT, PRIVACY }
 
 // ═══════════════════════════════════════════════════
 //  MainScreen — 3-tab layout with bottom navigation
@@ -144,6 +145,8 @@ fun MainScreen(
                 when (subPage) {
                     SettingsPage.GENERAL -> GeneralPage(
                         langZh = langZh,
+                        config = config,
+                        onConfigChange = onConfigChange,
                         onConfigServer = onConfigServer,
                         onRestartCore = onToggleConnection,
                         onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
@@ -151,6 +154,14 @@ fun MainScreen(
                     )
                     SettingsPage.PERMISSIONS -> PermissionsPage(
                         langZh = langZh,
+                        onBack = { closePage() }
+                    )
+                    SettingsPage.THEME -> ThemePage(
+                        langZh = langZh,
+                        isDarkTheme = isDarkTheme,
+                        dynamicColor = dynamicColor,
+                        onToggleTheme = onToggleTheme,
+                        onToggleDynamic = onToggleDynamic,
                         onBack = { closePage() }
                     )
                     SettingsPage.ABOUT -> AboutPage(
@@ -213,10 +224,9 @@ fun MainScreen(
                     langZh = langZh,
                     onToggleLanguage = onToggleLanguage,
                     isDarkTheme = isDarkTheme,
-                    onToggleTheme = onToggleTheme,
                     dynamicColor = dynamicColor,
-                    onToggleDynamic = onToggleDynamic,
                     onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
+                    onNavigateToTheme = { openPage(SettingsPage.THEME) },
                     onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
                     onToggleConnection = onToggleConnection,
                     onOpenLogs = { currentTab = Tab.LOGS },
@@ -255,7 +265,8 @@ private fun LogsTab(langZh: Boolean) {
         while (true) {
             collectionOn = com.easytier.AppLogger.enabled
             logs = if (collectionOn) com.easytier.AppLogger.getLogs() else ""
-            delay(2000L)
+            // 内存限制「严格」档把刷新从 2s 放慢到 5s
+            delay(com.easytier.RuntimeTuning.logsRefreshMs)
         }
     }
     val scroll = rememberScrollState()
@@ -787,10 +798,9 @@ private fun MoreTab(
     langZh: Boolean,
     onToggleLanguage: () -> Unit,
     isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit,
     dynamicColor: Boolean,
-    onToggleDynamic: () -> Unit,
     onNavigateToGeneral: () -> Unit,
+    onNavigateToTheme: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onToggleConnection: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
@@ -808,9 +818,9 @@ private fun MoreTab(
     val scrollState = rememberScrollState()
 
 
-    // ── Language / Theme pickers ──
-    var langDialogVisible by remember { mutableStateOf(false) }
-    var themeDialogVisible by remember { mutableStateOf(false) }
+    // ── Language / Theme entries ──
+    // 语言：底部抽屉；主题：二级页（pageStack + BackHandler）
+    var langSheetVisible by remember { mutableStateOf(false) }
 
     // 当前主题模式：0 = 浅色, 1 = 深色, 2 = 跟随系统
     val themeIndex = when {
@@ -859,22 +869,22 @@ private fun MoreTab(
             onClick = { onNavigateToGeneral() }
         )
 
-        // Language — current value + chevron, opens an Apple-style radio sheet
+        // Language — current value + chevron, opens a bottom sheet
         SettingsNavRow(
             icon = "⋮",
             title = T("语言", "Language", langZh),
             value = if (langZh) "中文" else "English",
             colors = colors,
-            onClick = { langDialogVisible = true }
+            onClick = { langSheetVisible = true }
         )
 
-        // Theme — current value + chevron, opens a 3-way radio sheet
+        // Theme — current value + chevron, enters the theme sub-page
         SettingsNavRow(
             icon = if (isDarkTheme) "●" else "○",
             title = T("主题", "Theme", langZh),
             value = themeValue,
             colors = colors,
-            onClick = { themeDialogVisible = true }
+            onClick = { onNavigateToTheme() }
         )
 
         // About Card (clickable → navigates to AboutPage)
@@ -908,41 +918,15 @@ private fun MoreTab(
     }
 
 
-    // Language picker — Apple-style radio sheet
-    SettingsChoiceDialog(
-        visible = langDialogVisible,
-        title = T("语言", "Language", langZh),
-        options = listOf("简体中文", "English"),
-        selectedIndex = if (langZh) 0 else 1,
+    // Language picker — bottom sheet, applies on tap and slides back out
+    LanguageSheet(
+        visible = langSheetVisible,
         langZh = langZh,
-        onSelect = { idx ->
-            if (idx == 0 && !langZh) onToggleLanguage()
-            if (idx == 1 && langZh) onToggleLanguage()
-            langDialogVisible = false
+        onSelect = { zh ->
+            if (zh != langZh) onToggleLanguage()
+            langSheetVisible = false
         },
-        onDismiss = { langDialogVisible = false }
-    )
-
-    // Theme picker — light / dark / follow-system, same state machine as the old pills
-    SettingsChoiceDialog(
-        visible = themeDialogVisible,
-        title = T("主题", "Theme", langZh),
-        options = listOf(
-            T("浅色", "Light", langZh),
-            T("深色", "Dark", langZh),
-            T("跟随系统", "System", langZh)
-        ),
-        selectedIndex = themeIndex,
-        langZh = langZh,
-        onSelect = { idx ->
-            when (idx) {
-                0 -> { if (dynamicColor) onToggleDynamic(); if (isDarkTheme) onToggleTheme() }
-                1 -> { if (dynamicColor) onToggleDynamic(); if (!isDarkTheme) onToggleTheme() }
-                2 -> { if (!dynamicColor) onToggleDynamic() }
-            }
-            themeDialogVisible = false
-        },
-        onDismiss = { themeDialogVisible = false }
+        onDismiss = { langSheetVisible = false }
     )
 }
 
@@ -990,102 +974,119 @@ fun SettingsNavRow(
 }
 
 /**
- * Apple-style single-choice sheet: one option per row, the selected row shows a
- * check mark. Enter/exit mirrors the other dialogs (scale + fade with HarmonyEasing).
+ * 语言选择：从底部滑入的圆角面板（20dp 顶圆角、玻璃底、拖动条 + 单选高亮）。
+ * 点选即生效并滑出；背景是半透明遮罩，点击遮罩关闭。
+ * 滑入 260ms / 滑出 220ms，遮罩 200ms，全部走 [HarmonyEasing]。
  */
 @Composable
-private fun SettingsChoiceDialog(
+private fun LanguageSheet(
     visible: Boolean,
-    title: String,
-    options: List<String>,
-    selectedIndex: Int,
     langZh: Boolean,
-    onSelect: (Int) -> Unit,
+    onSelect: (zh: Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = currentColors()
 
-    // Keep the Dialog mounted until the exit animation finishes.
+    // Keep the Dialog mounted until the slide-out finishes.
     var mounted by remember { mutableStateOf(false) }
     LaunchedEffect(visible) {
         if (visible) {
             mounted = true
         } else if (mounted) {
-            delay(320)
+            delay(280)
             mounted = false
         }
     }
     if (!mounted) return
 
+    val sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
-            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
-                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 320.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .flGlassCard(colors, 20.dp)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+        Box(modifier = Modifier.fillMaxSize()) {
+            // ── Scrim（点击关闭）──
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(tween(200, easing = HarmonyEasing)),
+                exit = fadeOut(tween(200, easing = HarmonyEasing))
             ) {
-                Text(
-                    text = title,
-                    color = colors.textPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 6.dp)
-                )
-                options.forEachIndexed { idx, label ->
-                    val selected = idx == selectedIndex
-                    val rowBg by animateColorAsState(
-                        targetValue = if (selected) colors.accentContainer else Color.Transparent,
-                        animationSpec = tween(220, easing = HarmonyEasing),
-                        label = "choiceRowBg"
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(rowBg)
-                            .clickable { onSelect(idx) }
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (selected) colors.accentLight else colors.textSecondary,
-                            fontSize = 14.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                        Spacer(Modifier.weight(1f))
-                        if (selected) {
-                            Text("✓", color = colors.accentLight, fontSize = 14.sp)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onDismiss() }
+                )
+            }
+
+            // ── Sheet ──
+            AnimatedVisibility(
+                visible = visible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically(tween(260, easing = HarmonyEasing)) { it } +
+                        fadeIn(tween(200, easing = HarmonyEasing)),
+                exit = slideOutVertically(tween(220, easing = HarmonyEasing)) { it } +
+                        fadeOut(tween(160, easing = HarmonyEasing))
+            ) {
+                Column(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onDismiss() }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .shadow(10.dp, sheetShape, clip = false)
+                        .clip(sheetShape)
+                        .background(colors.surface)
+                        .border(0.5.dp, colors.glassHighlight, sheetShape)
+                        .navigationBarsPadding()
+                        .padding(bottom = 10.dp)
                 ) {
-                    Text(
-                        text = T("取消", "Cancel", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 13.sp
+                    // Drag handle
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 8.dp, bottom = 8.dp)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(colors.inputBorder)
                     )
+                    Text(
+                        text = T("语言", "Language", langZh),
+                        color = colors.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 20.dp, bottom = 6.dp)
+                    )
+                    listOf(true to "简体中文", false to "English").forEach { (zh, label) ->
+                        val selected = zh == langZh
+                        val bg by animateColorAsState(
+                            targetValue = if (selected) colors.accentContainer else Color.Transparent,
+                            animationSpec = tween(200, easing = HarmonyEasing),
+                            label = "langRowBg"
+                        )
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 2.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(bg)
+                                .clickable { onSelect(zh) }
+                                .padding(horizontal = 12.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selected) colors.accentLight else colors.textSecondary,
+                                fontSize = 15.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            Spacer(Modifier.weight(1f))
+                            if (selected) {
+                                Text("✓", color = colors.accentLight, fontSize = 15.sp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
@@ -1710,129 +1711,65 @@ private fun UpdateDialog(
     onDismiss: () -> Unit
 ) {
     val colors = currentColors()
+    if (info == null) return
 
-    // Keep the Dialog mounted until the exit animation finishes.
-    var mounted by remember { mutableStateOf(false) }
-    LaunchedEffect(visible) {
-        if (visible) {
-            mounted = true
-        } else if (mounted) {
-            delay(320)
-            mounted = false
-        }
-    }
-    if (!mounted || info == null) return
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    HmDialog(
+        visible = visible,
+        onDismiss = onDismiss,
+        title = T("发现新版本 ${info.tag}", "New version ${info.tag}", langZh),
+        maxWidth = 340.dp,
+        horizontalPadding = 20.dp
     ) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
-            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
-                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
-        ) {
-            Column(
+        Text(
+            text = T("当前版本 v$currentVersion", "Current v$currentVersion", langZh),
+            color = colors.textTertiary,
+            fontSize = 11.sp
+        )
+
+        if (info.body.isNotBlank()) {
+            Box(
                 modifier = Modifier
-                    .widthIn(max = 340.dp)
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .flGlassCard(colors, 20.dp)
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .heightIn(max = 220.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.inputBg)
+                    .padding(10.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = T("发现新版本 ${info.tag}", "New version ${info.tag}", langZh),
-                    color = colors.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = info.body.trim(),
+                    color = colors.textSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
                 )
-                Text(
-                    text = T("当前版本 v$currentVersion", "Current v$currentVersion", langZh),
-                    color = colors.textTertiary,
-                    fontSize = 11.sp
-                )
-
-                if (info.body.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.inputBg)
-                            .padding(10.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Text(
-                            text = info.body.trim(),
-                            color = colors.textSecondary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        )
-                    }
-                } else {
-                    Text(
-                        text = T("（该版本没有更新说明）", "(No release notes for this version)", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 12.sp
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.accentGradient)
-                            .clickable { onDownloadApk() }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = T("直接下载", "Download APK", langZh),
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.inputBg)
-                            .border(0.5.dp, colors.inputBorder, RoundedCornerShape(10.dp))
-                            .clickable { onOpenBrowser() }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = T("浏览器下载", "Open in Browser", langZh),
-                            color = colors.textSecondary,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onDismiss() }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = T("关闭", "Close", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 13.sp
-                    )
-                }
             }
+        } else {
+            Text(
+                text = T("（该版本没有更新说明）", "(No release notes for this version)", langZh),
+                color = colors.textTertiary,
+                fontSize = 12.sp
+            )
+        }
+
+        HmDialogActionRow {
+            HmDialogPrimaryButton(
+                text = T("直接下载", "Download APK", langZh),
+                modifier = Modifier.weight(1f),
+                onClick = onDownloadApk
+            )
+            HmDialogSecondaryButton(
+                text = T("浏览器下载", "Open in Browser", langZh),
+                modifier = Modifier.weight(1f),
+                onClick = onOpenBrowser
+            )
+        }
+
+        HmDialogActionRow {
+            HmDialogTextButton(
+                text = T("关闭", "Close", langZh),
+                modifier = Modifier.weight(1f),
+                onClick = onDismiss
+            )
         }
     }
 }

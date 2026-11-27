@@ -697,9 +697,7 @@ fun Modifier.elasticPress(onClick: () -> Unit): Modifier {
 /**
  * Node editor dialog (add / edit a single peer node).
  *
- * Always composed by the caller: [visible] drives an [AnimatedVisibility] panel
- * (Harmony-style scale+fade in/out) while an internal `mounted` flag keeps the
- * Dialog on screen until the exit animation finishes.
+ * 外观与动效走统一组件 [HmDialog]（20dp 圆角玻璃卡 + fadeIn/scaleIn 0.96 240ms）。
  */
 @Composable
 fun NodeEditDialog(
@@ -712,137 +710,89 @@ fun NodeEditDialog(
 ) {
     val colors = currentColors()
 
-    var mounted by remember { mutableStateOf(false) }
-    LaunchedEffect(visible) {
-        if (visible) {
-            mounted = true
-        } else if (mounted) {
-            delay(320)
-            mounted = false
-        }
-    }
-    if (!mounted) return
-
     var protocol by remember(initial) { mutableStateOf(initial?.protocol ?: "tcp") }
     var address by remember(initial) { mutableStateOf(initial?.address ?: "") }
     var port by remember(initial) { mutableStateOf(initial?.port ?: "") }
     val canSave = address.isNotBlank() && port.isNotBlank()
 
-    Dialog(onDismissRequest = onDismiss) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(240, easing = LinearEasing)) +
-                    scaleIn(initialScale = 0.96f, animationSpec = tween(240, easing = LinearEasing)),
-            exit = fadeOut(tween(200, easing = LinearEasing)) +
-                    scaleOut(targetScale = 0.98f, animationSpec = tween(200, easing = LinearEasing))
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .fillMaxWidth()
-                    .flGlassCard(colors, 20.dp)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = if (initial == null) T("添加节点", "Add Node", langZh)
-                    else T("编辑节点", "Edit Node", langZh),
-                    color = colors.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                // ── Protocol: two segmented pills ──
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("tcp", "udp").forEach { proto ->
-                        val selected = protocol == proto
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(50))
-                                .background(if (selected) colors.accent else colors.inputBg)
-                                .border(
-                                    0.5.dp,
-                                    if (selected) colors.accent else colors.inputBorder,
-                                    RoundedCornerShape(50)
-                                )
-                                .clickable { protocol = proto }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = proto.uppercase(),
-                                color = if (selected) Color.White else colors.textSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
-
-                HmTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    label = T("地址", "Address", langZh),
-                    placeholder = "1.2.3.4 或 [::1]",
-                    colors = colors
-                )
-
-                HmTextField(
-                    value = port,
-                    onValueChange = { input -> if (input.all { it.isDigit() }) port = input },
-                    label = T("端口", "Port", langZh),
-                    placeholder = "11011",
-                    keyboardType = KeyboardType.Number,
-                    colors = colors
-                )
-
-                // ── Actions: delete (edit only) / cancel / save ──
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+    HmDialog(
+        visible = visible,
+        onDismiss = onDismiss,
+        title = if (initial == null) T("添加节点", "Add Node", langZh)
+        else T("编辑节点", "Edit Node", langZh),
+        maxWidth = 300.dp,
+        horizontalPadding = 30.dp
+    ) {
+        // ── Protocol: two segmented pills ──
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("tcp", "udp").forEach { proto ->
+                val selected = protocol == proto
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) colors.accent else colors.inputBg)
+                        .border(
+                            0.5.dp,
+                            if (selected) colors.accent else colors.inputBorder,
+                            RoundedCornerShape(50)
+                        )
+                        .clickable { protocol = proto }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    onDelete?.let { delete ->
-                        Text(
-                            text = T("删除", "Delete", langZh),
-                            color = colors.dangerText,
-                            fontSize = 13.sp,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { delete() }
-                                .padding(horizontal = 4.dp, vertical = 8.dp)
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
                     Text(
-                        text = T("取消", "Cancel", langZh),
-                        color = colors.textSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onDismiss() }
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                        text = proto.uppercase(),
+                        color = if (selected) Color.White else colors.textSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                     )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (canSave) colors.accent else colors.accent.copy(alpha = 0.35f)
-                            )
-                            .clickable(enabled = canSave) {
-                                onSave(PeerNode(protocol, address.trim(), port.trim()))
-                            }
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = T("保存", "Save", langZh),
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
                 }
+            }
+        }
+
+        HmTextField(
+            value = address,
+            onValueChange = { address = it },
+            label = T("地址", "Address", langZh),
+            placeholder = "1.2.3.4 或 [::1]",
+            colors = colors
+        )
+
+        HmTextField(
+            value = port,
+            onValueChange = { input -> if (input.all { it.isDigit() }) port = input },
+            label = T("端口", "Port", langZh),
+            placeholder = "11011",
+            keyboardType = KeyboardType.Number,
+            colors = colors
+        )
+
+        // ── Actions: delete (edit only) / cancel / save ──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            onDelete?.let { delete ->
+                HmDialogTextButton(
+                    text = T("删除", "Delete", langZh),
+                    color = colors.dangerText,
+                    onClick = delete
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            HmDialogSecondaryButton(
+                text = T("取消", "Cancel", langZh),
+                modifier = Modifier.width(72.dp),
+                onClick = onDismiss
+            )
+            HmDialogPrimaryButton(
+                text = T("保存", "Save", langZh),
+                modifier = Modifier.width(88.dp),
+                enabled = canSave
+            ) {
+                onSave(PeerNode(protocol, address.trim(), port.trim()))
             }
         }
     }

@@ -107,6 +107,11 @@ class MainActivity : ComponentActivity() {
     private var myNodeItem by mutableStateOf<PeerInfoItem?>(null)
     private var peerItems by mutableStateOf(listOf<PeerInfoItem>())
     private var pollingActive = false
+    /** Activity 是否在前台（省电模式只在后台/熄屏降频） */
+    private var appForeground = false
+    /** 上次同步到 RuntimeTuning 的档位，避免每次配置改动都重排轮询 */
+    private var appliedPowerSaving = false
+    private var appliedMemoryLimit = RuntimeTuning.MEMORY_STANDARD
     // Log dialog state
     private var showLogDialogState by mutableStateOf(false)
     private var peerInfoExpanded by mutableStateOf(false)
@@ -134,6 +139,11 @@ class MainActivity : ComponentActivity() {
         dynamicColor = getSharedPreferences(PREFS_THEME, MODE_PRIVATE).getBoolean("dynamic_color", false)
         privacyAccepted = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
             .getBoolean(PREFS_PRIVACY_ACCEPTED, false)
+
+        // 省电模式 / 内存限制档位（AppLogger 上限、轮询节奏从这里读）
+        RuntimeTuning.load(this)
+        appliedPowerSaving = RuntimeTuning.powerSaving
+        appliedMemoryLimit = RuntimeTuning.memoryLimit
 
         // ➕ 恢复上次使用的配置名，启动时自动加载对应的配置
         val statePrefs = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
@@ -264,7 +274,11 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     config = configState,
-                    onConfigChange = { configState = it; configChanged = true },
+                    onConfigChange = {
+                        configState = it
+                        configChanged = true
+                        syncRuntimeTuning()
+                    },
                     currentConfigName = currentConfigName,
                     langZh = langZh,
                     onConfigNameClick = { showConfigManagerDialog() },
@@ -828,6 +842,11 @@ class MainActivity : ComponentActivity() {
             try {
                 configState = TomlUtils.jsonToConfigState(JSONObject(file.readText()))
                 currentConfigName = name
+                // 配置里带着省电 / 内存档位 → 同步到运行时调节
+                appliedPowerSaving = configState.powerSaving
+                appliedMemoryLimit = configState.memoryLimit.ifEmpty { RuntimeTuning.MEMORY_STANDARD }
+                RuntimeTuning.setPowerSaving(this, appliedPowerSaving)
+                RuntimeTuning.setMemoryLimit(this, appliedMemoryLimit)
                 // Persist last config name so it survives app restart
                 getSharedPreferences(PREFS_STATE, MODE_PRIVATE).edit()
                     .putString("last_config_name", name).apply()
@@ -859,6 +878,10 @@ class MainActivity : ComponentActivity() {
 
     private fun resetToDefaults() {
         configState = ConfigState(ipPrefix = "24")
+        appliedPowerSaving = configState.powerSaving
+        appliedMemoryLimit = configState.memoryLimit
+        RuntimeTuning.setPowerSaving(this, appliedPowerSaving)
+        RuntimeTuning.setMemoryLimit(this, appliedMemoryLimit)
     }
 
     // ── Dialogs ──
@@ -1137,6 +1160,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        appForeground = true
         // The QS tile can stop the tunnel while this activity is paused — resync on return
         // so the status card does not keep showing "Running" for a dead tunnel.
         if (isRunning && !EasyTierManager.isRunning) {
@@ -1145,7 +1169,16 @@ class MainActivity : ComponentActivity() {
             myNodeItem = null
             peerItems = emptyList()
             updateConnectionState(ConnectionStatus.STOPPED)
+        } else if (isRunning) {
+            // 回到前台：立即刷新一次，并让轮询恢复前台节奏（省电模式下也如此）
+            startPolling()
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // 省电模式只在后台/熄屏时降频到 60s；循环继续跑，只是节奏变慢
+        appForeground = false
     }
 
     private fun startPolling() {
@@ -1161,9 +1194,26 @@ class MainActivity : ComponentActivity() {
                     break
                 }
                 refreshPeerInfo()
-                delay(1000L)
+                // 1s（严格档 2s）；省电模式 + 后台/熄屏时 60s，回到前台立刻恢复
+                delay(RuntimeTuning.pollIntervalMs(appForeground))
             }
         }
+    }
+
+    /**
+     * ConfigState 里的省电 / 内存档位 → 运行时调节。
+     * 只在档位真正变化时重排轮询，避免每次输入都重启循环。
+     */
+    private fun syncRuntimeTuning() {
+        val ps = configState.powerSaving
+        val ml = configState.memoryLimit.ifEmpty { RuntimeTuning.MEMORY_STANDARD }
+        if (ps == appliedPowerSaving && ml == appliedMemoryLimit) return
+        appliedPowerSaving = ps
+        appliedMemoryLimit = ml
+        RuntimeTuning.setPowerSaving(this, ps)
+        RuntimeTuning.setMemoryLimit(this, ml)   // 同时把日志条数/保留时长写进 AppLogger
+        if (isRunning) startPolling()
+        AppLogger.i("MainActivity", "RuntimeTuning: powerSaving=$ps memoryLimit=$ml")
     }
 
     private fun stopPolling() {

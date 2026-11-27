@@ -80,6 +80,7 @@ data class ConfigState(
     val exitNodes: String = "",
     // Custom DNS server pushed to the TUN interface (empty = system DNS)
     val dnsServer: String = "",
+    val dnsEnabled: Boolean = false,
     // Additional peer URIs (e.g. tcp://host:port), beyond the main server+port
     val extraServers: List<String> = emptyList(),
     // Structured server node list (primary UI). Legacy server/port/extraServers

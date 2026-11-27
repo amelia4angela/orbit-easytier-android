@@ -311,71 +311,22 @@ private fun BottomNavigationBar(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
-    val isDark = LocalIsDarkTheme.current
     val shape = RoundedCornerShape(24.dp)
     val pillShape = RoundedCornerShape(16.dp)
-    // Glass base: keep it translucent so the list underneath bleeds through
-    val glassBase = colors.navGlass.copy(alpha = if (isDark) 0.82f else 0.74f)
-    val edgeTop = Color.White.copy(alpha = if (isDark) 0.22f else 0.70f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        // ── Liquid glass panel ──────────────────────────────────────────
+        // ── Flat nav bar (no glass) ────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                // soft outer shadow → the bar floats above the content
-                .shadow(
-                    elevation = 18.dp,
-                    shape = shape,
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.22f),
-                    spotColor = Color.Black.copy(alpha = 0.26f)
-                )
                 .clip(shape)
-                // layer 1: translucent glass tint base
-                .background(glassBase)
-                // layer 2: bright top → deeper bottom (light passing through glass)
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to Color.White.copy(alpha = if (isDark) 0.10f else 0.55f),
-                            0.55f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = if (isDark) 0f else 0.05f)
-                        )
-                    )
-                )
-                // layer 3: edge stroke — bright hairline up top, faint around
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            edgeTop,
-                            colors.navGlassBorder
-                        )
-                    ),
-                    shape = shape
-                )
-        ) {
-            // Specular highlight: 1dp white line along the top edge
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0f),
-                                Color.White.copy(alpha = 0.30f),
-                                Color.White.copy(alpha = 0f)
-                            )
-                        )
-                    )
-            )
+                .background(colors.navGlass)
+                .border(0.5.dp, colors.navGlassBorder, shape)
+        )
 
             Row(
                 modifier = Modifier
@@ -898,15 +849,6 @@ private fun MoreTab(
             onClick = { onToggleConnection() }
         )
 
-        // View Logs — jumps to the Logs tab
-        SettingsNavRow(
-            icon = "☰",
-            title = T("查看日志", "View Logs", langZh),
-            subtitle = T("打开日志页面查看运行记录", "Open the logs page", langZh),
-            colors = colors,
-            onClick = { onOpenLogs() }
-        )
-
         // Log collection toggle (AppLogger.setEnabled)
         Box(
             modifier = Modifier
@@ -971,63 +913,6 @@ private fun MoreTab(
             colors = colors,
             onClick = { themeDialogVisible = true }
         )
-
-        // Check Update card (clickable → dialog with download options)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .clickable(enabled = !checking) {
-                    checking = true
-                    scope.launch {
-                        try {
-                            val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
-                            if (isNewerVersion(info.tag, version)) {
-                                updateInfo = info
-                                updateDialogVisible = true
-                            } else {
-                                Toast.makeText(
-                                    ctx,
-                                    T("已是最新版本 v$version", "Already up to date (v$version)", langZh),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                ctx,
-                                T(
-                                    "检查更新失败：${e.message ?: "unknown"}",
-                                    "Update check failed: ${e.message ?: "unknown"}",
-                                    langZh
-                                ),
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } finally {
-                            checking = false
-                        }
-                    }
-                }
-                .padding(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (checking) "⋯" else "⟳", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        T("检查更新", "Check Update", langZh),
-                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        if (checking) T("正在检查…", "Checking…", langZh)
-                        else T("从 GitHub 获取最新版本", "Fetch the latest release from GitHub", langZh),
-                        color = colors.textTertiary, fontSize = 12.sp
-                    )
-                }
-                Text("›", color = colors.textTertiary, fontSize = 18.sp)
-            }
-        }
 
         // About Card (clickable → navigates to AboutPage)
         Box(

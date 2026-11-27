@@ -253,7 +253,7 @@ fun ConfigForm(
                 .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
                 .padding(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🛡", fontSize = 16.sp)
                     Spacer(Modifier.width(8.dp))
@@ -264,29 +264,22 @@ fun ConfigForm(
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        T("连接时注入 TUN", "Injected on connect", langZh),
-                        color = colors.textTertiary,
-                        fontSize = 11.sp
+                    HmToggle(
+                        label = if (config.dnsEnabled) T("开", "ON", langZh) else T("关", "OFF", langZh),
+                        checked = config.dnsEnabled,
+                        onCheckedChange = { onConfigChange(config.copy(dnsEnabled = it)) },
+                        colors = colors
                     )
                 }
-                Text(
-                    T(
-                        "填写 DNS 地址（如 10.144.144.1 启用 AdGuard 去广告），留空则使用系统 DNS",
-                        "Set a DNS (e.g. 10.144.144.1 for AdGuard). Empty = system DNS",
-                        langZh
-                    ),
-                    color = colors.textSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-                HmTextField(
-                    value = config.dnsServer,
-                    onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
-                    label = T("DNS 服务器", "DNS Server", langZh),
-                    placeholder = "10.144.144.1",
-                    colors = colors
-                )
+                if (config.dnsEnabled) {
+                    HmTextField(
+                        value = config.dnsServer,
+                        onValueChange = { onConfigChange(config.copy(dnsServer = it)) },
+                        label = T("DNS 服务器", "DNS Server", langZh),
+                        placeholder = "10.144.144.1",
+                        colors = colors
+                    )
+                }
             }
         }
 

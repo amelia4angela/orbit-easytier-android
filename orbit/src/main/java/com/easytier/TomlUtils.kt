@@ -63,6 +63,7 @@ object TomlUtils {
         j.put("proxyNetworks", s.proxyNetworks)
         j.put("exitNodes", s.exitNodes)
         j.put("dnsServer", s.dnsServer)
+        j.put("dnsEnabled", s.dnsEnabled)
         j.put("extraServers", org.json.JSONArray(s.extraServers))
         val arr = org.json.JSONArray()
         for (n in s.nodes) {
@@ -188,6 +189,7 @@ object TomlUtils {
             proxyNetworks = j.optString("proxyNetworks"),
             exitNodes = j.optString("exitNodes"),
             dnsServer = j.optString("dnsServer"),
+            dnsEnabled = j.optBoolean("dnsEnabled", false),
             extraServers = legacyExtra,
             nodes = nodes
         )

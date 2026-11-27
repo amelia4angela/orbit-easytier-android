@@ -24,6 +24,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,17 +41,20 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
 import kotlin.math.cos
@@ -131,7 +140,8 @@ fun gearPath(size: Float, teeth: Int = 8): Path {
 fun StatusGear(
     status: ConnectionStatus,
     modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 22.dp
+    size: androidx.compose.ui.unit.Dp = 22.dp,
+    holeTint: Color? = null
 ) {
     val colors = currentColors()
     val isStarting = status == ConnectionStatus.STARTING
@@ -162,7 +172,10 @@ fun StatusGear(
         val gear = gearPath(s)
         val holeR = s * 0.15f
         val center = Offset(s / 2f, s / 2f)
-        val holeColor = colors.surface
+        // Recessed centre hole. Defaults to a translucent dark disc so the gear
+        // reads correctly on any card background (the status card is a gradient,
+        // not a flat surface).
+        val holeColor = holeTint ?: Color.Black.copy(alpha = 0.28f)
 
         // Full gear: toothed crown + punched center hole
         fun paintGear(rotation: Float) {
@@ -200,8 +213,14 @@ fun StatusGear(
 }
 
 /**
- * FlClash Status card: status pill + big IP/hostname + run time on the left,
- * organic blob connect button on the right.
+ * FlClash Status card: status gear + pill + big IP/hostname + sub info on the
+ * left, organic blob connect button on the right, and a translucent stat strip
+ * (down / up / peers / uptime) pinned to the bottom.
+ *
+ * The whole card is painted with a status-coloured top-left → bottom-right
+ * gradient (green while starting, blue while running, red on error, neutral
+ * grey when stopped) layered over the theme surface, so it keeps working in
+ * both light and dark themes.
  */
 @Composable
 fun FlClashStatusCard(
@@ -213,9 +232,12 @@ fun FlClashStatusCard(
     peerCount: Int,
     latency: String,
     modifier: Modifier = Modifier,
-    langZh: Boolean = true
+    langZh: Boolean = true,
+    rxSpeed: String = "",
+    txSpeed: String = ""
 ) {
     val colors = currentColors()
+    val isDark = LocalIsDarkTheme.current
     val isConnected = state.status == ConnectionStatus.RUNNING || state.status == ConnectionStatus.NO_TUN
     val isStarting = state.status == ConnectionStatus.STARTING
     val isError = state.status == ConnectionStatus.ERROR || state.status == ConnectionStatus.REVOKED
@@ -240,10 +262,41 @@ fun FlClashStatusCard(
         else -> colors.textTertiary
     }
 
-    Box(
+    // ── Status gradient: two palette colours, mixed into the surface so the
+    // card stays readable in both themes (accent = where light comes from).
+    val statusBase = when {
+        isError -> colors.statusBad
+        isStarting -> colors.statusGood
+        isConnected -> colors.accent
+        else -> colors.textTertiary
+    }
+    val statusAccent = when {
+        isError -> lerp(colors.statusBad, Color.White, 0.30f)
+        isStarting -> lerp(colors.statusGood, Color.White, 0.30f)
+        isConnected -> colors.accentLight
+        else -> colors.surfaceDim
+    }
+    val gradient = Brush.linearGradient(
+        listOf(
+            lerp(colors.surface, statusBase, if (isDark) 0.45f else 0.24f),
+            lerp(colors.surface, statusAccent, if (isDark) 0.18f else 0.10f)
+        )
+    )
+    val cardShape = RoundedCornerShape(20.dp)
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .flGlassCard(colors, 20.dp)
+            .shadow(
+                elevation = 8.dp,
+                shape = cardShape,
+                clip = false,
+                ambientColor = statusBase.copy(alpha = if (isDark) 0.35f else 0.18f),
+                spotColor = statusBase.copy(alpha = if (isDark) 0.35f else 0.18f)
+            )
+            .clip(cardShape)
+            .background(gradient)
+            .border(0.5.dp, colors.glassHighlight, cardShape)
             .padding(16.dp)
     ) {
         Row(
@@ -259,7 +312,10 @@ fun FlClashStatusCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
-                            .background(pillColor.copy(alpha = 0.15f))
+                            .background(
+                                if (isDark) Color.Black.copy(alpha = 0.22f)
+                                else Color.White.copy(alpha = 0.55f)
+                            )
                             .padding(horizontal = 10.dp, vertical = 3.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -272,7 +328,7 @@ fun FlClashStatusCard(
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 pillText,
-                                color = pillColor,
+                                color = colors.textPrimary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -286,7 +342,7 @@ fun FlClashStatusCard(
                 Text(
                     text = nodeLabel.ifEmpty { "—" },
                     color = colors.textPrimary,
-                    fontSize = 24.sp,
+                    fontSize = 25.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
@@ -294,22 +350,26 @@ fun FlClashStatusCard(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = nodeSub,
-                        color = colors.textTertiary,
+                        color = colors.textSecondary,
                         fontSize = 12.sp,
                         maxLines = 1
                     )
                 }
 
-                Spacer(Modifier.height(10.dp))
-
-                // Meta row: run time / peers / latency
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (uptime.isNotEmpty()) {
-                        MetaItem(label = T("运行", "Uptime", langZh), value = uptime, colors = colors)
-                    }
-                    MetaItem(label = T("节点", "Peers", langZh), value = "$peerCount", colors = colors)
-                    if (latency.isNotEmpty()) {
-                        MetaItem(label = T("延迟", "Ping", langZh), value = latency, colors = colors)
+                if (latency.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            T("延迟 ", "Ping ", langZh),
+                            color = colors.textTertiary,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            latency,
+                            color = colors.textSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
@@ -350,14 +410,96 @@ fun FlClashStatusCard(
                 )
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+
+        // ── Stat strip: down / up / peers / uptime in a translucent dark block ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (isDark) Color.Black.copy(alpha = 0.22f)
+                    else Color.Black.copy(alpha = 0.055f)
+                )
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CardStatItem(
+                icon = Icons.Rounded.ArrowDownward,
+                label = T("下载", "Down", langZh),
+                value = rxSpeed.ifEmpty { "—" },
+                accent = statusBase,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+            CardStatItem(
+                icon = Icons.Rounded.ArrowUpward,
+                label = T("上传", "Up", langZh),
+                value = txSpeed.ifEmpty { "—" },
+                accent = statusBase,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+            CardStatItem(
+                icon = Icons.Rounded.Lan,
+                label = T("节点", "Peers", langZh),
+                value = "$peerCount",
+                accent = statusBase,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+            CardStatItem(
+                icon = Icons.Rounded.Schedule,
+                label = T("时长", "Uptime", langZh),
+                value = uptime.ifEmpty { "—" },
+                accent = statusBase,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
+/** One cell of the status card's stat strip: icon chip + tiny label + value. */
 @Composable
-private fun MetaItem(label: String, value: String, colors: com.easytier.ui.theme.AppColors) {
-    Column {
-        Text(label, color = colors.textTertiary, fontSize = 10.sp)
-        Text(value, color = colors.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+private fun CardStatItem(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    accent: Color,
+    colors: com.easytier.ui.theme.AppColors,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(accent.copy(alpha = 0.20f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.textPrimary,
+                modifier = Modifier.size(13.dp)
+            )
+        }
+        Text(label, color = colors.textTertiary, fontSize = 9.sp, maxLines = 1)
+        Text(
+            value,
+            color = colors.textPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
     }
 }
 

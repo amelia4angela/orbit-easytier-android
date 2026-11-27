@@ -279,6 +279,15 @@ fun ConfigForm(
                         placeholder = "10.144.144.1",
                         colors = colors
                     )
+                    Text(
+                        T(
+                            "请确认对应服务器已部署 DNS 服务",
+                            "Make sure a DNS service is deployed on that server",
+                            langZh
+                        ),
+                        color = colors.textTertiary,
+                        fontSize = 11.sp
+                    )
                 }
             }
         }

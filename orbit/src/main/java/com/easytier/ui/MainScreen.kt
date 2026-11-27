@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
@@ -312,7 +314,24 @@ private fun BottomNavigationBar(
 ) {
     val colors = currentColors()
     val shape = RoundedCornerShape(24.dp)
-    val pillShape = RoundedCornerShape(16.dp)
+    val indicatorShape = RoundedCornerShape(16.dp)
+
+    val items = listOf(
+        Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
+        Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
+        Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
+        Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
+    )
+    val selectedIndex = items.indexOfFirst { it.third == currentTab }.coerceAtLeast(0)
+
+    // Floating indicator (AnimatedBottomBar style): animate the *slot* (0f..n-1)
+    // instead of each pill's alpha, then derive the offset from the tab width.
+    // The value is read inside the offset lambda, so sliding is layout-only.
+    val slot by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = tween(durationMillis = 380, easing = HarmonyEasing),
+        label = "navSlot"
+    )
 
     Box(
         modifier = modifier
@@ -326,58 +345,74 @@ private fun BottomNavigationBar(
                 .clip(shape)
                 .background(colors.navGlass)
                 .border(0.5.dp, colors.navGlassBorder, shape)
+                .padding(6.dp)
         ) {
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .height(48.dp)
             ) {
-                listOf(
-                    Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
-                    Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
-                    Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
-                    Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
-                ).forEach { (icon, label, tab) ->
-                    val isActive = currentTab == tab
-                    // Liquid pill: fades/grows in with the HarmonyOS easing
-                    val pillAlpha by animateFloatAsState(
-                        targetValue = if (isActive) 1f else 0f,
-                        animationSpec = tween(300, easing = HarmonyEasing),
-                        label = "navPill"
-                    )
-                    val contentColor by animateColorAsState(
-                        targetValue = if (isActive) Color.White else colors.textTertiary,
-                        animationSpec = tween(300, easing = HarmonyEasing),
-                        label = "navTint"
-                    )
+                val itemWidth = maxWidth / items.size
+                val itemWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { itemWidth.toPx() }
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(pillShape)
-                            // simple flat pill: solid accent, gently faded in
-                            .background(colors.accent.copy(alpha = pillAlpha))
-                            .clickable { onTabSelected(tab) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                // Sliding block sits behind the items and moves under the tap.
+                Box(
+                    modifier = Modifier
+                        .offset { androidx.compose.ui.unit.IntOffset((itemWidthPx * slot).roundToInt(), 0) }
+                        .width(itemWidth)
+                        .fillMaxHeight()
+                        .clip(indicatorShape)
+                        .background(colors.accent)
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                ) {
+                    items.forEachIndexed { index, (icon, label, tab) ->
+                        val isActive = index == selectedIndex
+                        val tint by animateColorAsState(
+                            targetValue = if (isActive) Color.White else colors.textTertiary,
+                            animationSpec = tween(300, easing = HarmonyEasing),
+                            label = "navTint"
+                        )
+                        val iconScale by animateFloatAsState(
+                            targetValue = if (isActive) 1.08f else 1f,
+                            animationSpec = tween(380, easing = HarmonyEasing),
+                            label = "navIconScale"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(indicatorShape)
+                                .clickable { onTabSelected(tab) },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = label,
-                                tint = contentColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = label,
-                                color = contentColor,
-                                fontSize = 10.sp,
-                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = tint,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .graphicsLayer {
+                                            scaleX = iconScale
+                                            scaleY = iconScale
+                                        }
+                                )
+                                Text(
+                                    text = label,
+                                    color = tint,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
                 }
@@ -456,7 +491,9 @@ private fun StatusTab(
                 uptime = uptime,
                 peerCount = peerCount,
                 latency = latency,
-                langZh = langZh
+                langZh = langZh,
+                rxSpeed = rxSpeed,
+                txSpeed = myNodeItem?.txSpeed ?: ""
             )
 
             // ── Speed cards (only when running) ──

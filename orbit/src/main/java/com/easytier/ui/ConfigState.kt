@@ -78,8 +78,9 @@ data class ConfigState(
     val compression: String = "",
     val proxyNetworks: String = "",
     val exitNodes: String = "",
-    // Custom DNS server pushed to the TUN interface (empty = system DNS)
-    val dnsServer: String = "",
+    // Custom DNS server pushed to the TUN interface (empty = system DNS).
+    // Pre-filled with the usual EasyTier gateway; stored configs keep their own value.
+    val dnsServer: String = "10.144.144.1",
     val dnsEnabled: Boolean = false,
     // Additional peer URIs (e.g. tcp://host:port), beyond the main server+port
     val extraServers: List<String> = emptyList(),

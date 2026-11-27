@@ -44,9 +44,9 @@ import java.security.MessageDigest
 //  Privacy policy — 在线 Markdown（GitHub raw + 镜像 + 内置兜底）
 // ═══════════════════════════════════════════════════
 
-/** 政策正文的权威地址：仓库根 PRIVACY.md（main 分支）。 */
+/** 政策正文的权威地址：仓库根 PRIVACY.md（feat/tun-dns 分支）。 */
 private const val PRIVACY_MD_RAW =
-    "https://raw.githubusercontent.com/amelia4angela/orbit-easytier-android/main/PRIVACY.md"
+    "https://raw.githubusercontent.com/amelia4angela/orbit-easytier-android/feat/tun-dns/PRIVACY.md"
 
 /**
  * 拉取顺序：GitHub raw → ghfast 加速 → gitmirror 镜像。
@@ -55,7 +55,7 @@ private const val PRIVACY_MD_RAW =
 private val PRIVACY_MD_URLS = listOf(
     PRIVACY_MD_RAW,
     "https://ghfast.top/$PRIVACY_MD_RAW",
-    "https://raw.gitmirror.com/amelia4angela/orbit-easytier-android/main/PRIVACY.md"
+    "https://raw.gitmirror.com/amelia4angela/orbit-easytier-android/feat/tun-dns/PRIVACY.md"
 )
 
 /** 中英分节标记：正文用它切开中文段 / 英文段，渲染时只取当前语言那一段。 */

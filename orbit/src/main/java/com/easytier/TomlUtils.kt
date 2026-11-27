@@ -466,7 +466,19 @@ object TomlUtils {
 
         for (line in text.lines()) {
             val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+            if (trimmed.isEmpty()) continue
+            // App-layer settings carried as "# orbit-app: ..." — restore before the
+            // generic comment skip so DNS push survives export → import.
+            if (trimmed.startsWith("# orbit-app:")) {
+                Regex("dns_enabled=(\\w+)").find(trimmed)?.let {
+                    j.put("dnsEnabled", it.groupValues[1] == "true")
+                }
+                Regex("dns_server=(\\S+)").find(trimmed)?.let {
+                    j.put("dnsServer", it.groupValues[1].trim('"'))
+                }
+                continue
+            }
+            if (trimmed.startsWith("#")) continue
 
             if (trimmed.startsWith("[")) {
                 if (section == "port_forward") flushPortForward()

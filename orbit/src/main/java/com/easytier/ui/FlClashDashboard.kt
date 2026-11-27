@@ -731,10 +731,10 @@ fun NodeEditDialog(
     Dialog(onDismissRequest = onDismiss) {
         AnimatedVisibility(
             visible = visible,
-            enter = fadeIn(tween(300, easing = HarmonyEasing)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(300, easing = HarmonyEasing)),
-            exit = fadeOut(tween(300, easing = HarmonyEasing)) +
-                    scaleOut(targetScale = 0.95f, animationSpec = tween(300, easing = HarmonyEasing))
+            enter = fadeIn(tween(240, easing = LinearEasing)) +
+                    scaleIn(initialScale = 0.96f, animationSpec = tween(240, easing = LinearEasing)),
+            exit = fadeOut(tween(200, easing = LinearEasing)) +
+                    scaleOut(targetScale = 0.98f, animationSpec = tween(200, easing = LinearEasing))
         ) {
             Column(
                 modifier = Modifier

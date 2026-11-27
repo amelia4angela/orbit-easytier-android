@@ -107,6 +107,11 @@ fun MainScreen(
     var updateDialogVisible by remember { mutableStateOf(false) }
     var autoCheckUpdate by remember { mutableStateOf(autoCheckUpdateEnabled(ctx)) }
 
+    // ── 隐私政策在线版本：启动后比对内容 hash，变了才提示 ──
+    var privacyUpdateVisible by remember { mutableStateOf(false) }
+    /** true = 政策页是从「隐私政策已更新」弹窗进来的，底部多一个「已阅读并同意」 */
+    var privacyAgreeMode by remember { mutableStateOf(false) }
+
     // 启动后 5s 静默检查一次：开关关闭就跳过；网络/解析失败一律静默忽略。
     LaunchedEffect(Unit) {
         delay(5_000)
@@ -119,6 +124,18 @@ fun MainScreen(
             }
         } catch (_: Exception) {
             // 静默：启动检查不因为网络问题打扰用户
+        }
+    }
+
+    // 启动后 8s 拉一次 PRIVACY.md（与上面的 5s 更新检查错开），
+    // hash 与「已同意版本」不同 → 弹「隐私政策已更新」；拉取失败静默。
+    LaunchedEffect(Unit) {
+        delay(8_000)
+        if (!PrivacyMd.markCompared()) return@LaunchedEffect   // 本进程已比对过（Activity 重建）
+        val fresh = withContext(Dispatchers.IO) { PrivacyMd.fetch() } ?: return@LaunchedEffect
+        PrivacyMd.saveCache(ctx, fresh)
+        if (PrivacyMd.acceptedHash(ctx) != PrivacyMd.hashOf(fresh)) {
+            privacyUpdateVisible = true
         }
     }
 
@@ -237,12 +254,23 @@ fun MainScreen(
                             onBack = { closePage() },
                             onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
                         )
-                        SettingsPage.PRIVACY -> PrivacyPolicyPage(
+                        SettingsPage.PRIVACY -> PrivacyDocPage(
                             langZh = langZh,
                             forced = false,
-                            onAccept = { closePage() },
-                            onDecline = { closePage() },
-                            onBack = { closePage() }
+                            // 从「隐私政策已更新」弹窗进来时底部才给「已阅读并同意」
+                            showAgree = privacyAgreeMode,
+                            onAccept = {
+                                privacyAgreeMode = false
+                                closePage()
+                            },
+                            onDecline = {
+                                privacyAgreeMode = false
+                                closePage()
+                            },
+                            onBack = {
+                                privacyAgreeMode = false
+                                closePage()
+                            }
                         )
                     }
                 } else {
@@ -356,6 +384,44 @@ fun MainScreen(
             },
             onDismiss = { updateDialogVisible = false }
         )
+
+        // ── 隐私政策更新提示 ──
+        // 启动 8s 拉取后 hash 与已同意版本不同才弹；「稍后」不写 hash，下次启动再提示。
+        HmDialog(
+            visible = privacyUpdateVisible,
+            onDismiss = { privacyUpdateVisible = false },
+            title = T("隐私政策已更新", "Privacy Policy Updated", langZh),
+            maxWidth = 340.dp,
+            horizontalPadding = 20.dp
+        ) {
+            Text(
+                text = T(
+                    "我们更新了隐私政策，请查看最新内容。",
+                    "We updated our privacy policy. Please review the latest version.",
+                    langZh
+                ),
+                color = colors.textSecondary,
+                fontSize = 13.sp,
+                lineHeight = 19.sp
+            )
+
+            HmDialogActionRow {
+                HmDialogPrimaryButton(
+                    text = T("查看并同意", "Review & Agree", langZh),
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        privacyUpdateVisible = false
+                        privacyAgreeMode = true          // 政策页底部才会出现「已阅读并同意」
+                        openPage(SettingsPage.PRIVACY)
+                    }
+                )
+                HmDialogSecondaryButton(
+                    text = T("稍后", "Later", langZh),
+                    modifier = Modifier.weight(1f),
+                    onClick = { privacyUpdateVisible = false }
+                )
+            }
+        }
     }
 }
 
@@ -1316,153 +1382,83 @@ fun AboutPage(
                         }
                     }
 
-                    // Version info
+                    // 检查更新 + 自动检查更新 —— 合并成一张卡片：
+                    // 点卡片主体 = 立即检查（checking / latest / error 反馈都在副行里），
+                    // 右侧 HmSwitch = 自动检查（状态在 MainScreen，落盘 auto_check_update）。
                     Spacer(Modifier.height(10.dp))
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(colors.surfaceDim)
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = T("应用版本", "App Version", langZh),
-                                    color = colors.textTertiary,
-                                    fontSize = 11.sp
-                                )
-                                Text(
-                                    text = "v$version",
-                                    color = colors.textPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-
-                            // Check update button
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (checking) colors.textTertiary.copy(alpha = 0.15f)
-                                        else colors.accentContainer.copy(alpha = 0.5f)
-                                    )
-                                    .clickable(enabled = !checking) {
-                                        checking = true
-                                        updateStatus = null
-                                        scope.launch {
-                                            try {
-                                                val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
-                                                if (isNewerVersion(info.tag, version)) {
-                                                    // 新版本 → 交给 MainScreen 的统一弹窗（release notes + 下载）
-                                                    onNewVersionFound(info)
-                                                } else {
-                                                    updateStatus = "latest"
-                                                }
-                                            } catch (_: Exception) {
-                                                updateStatus = "error"
-                                            }
-                                            checking = false
+                            .clickable(enabled = !checking) {
+                                checking = true
+                                updateStatus = null
+                                scope.launch {
+                                    try {
+                                        val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                        if (isNewerVersion(info.tag, version)) {
+                                            // 新版本 → 交给 MainScreen 的统一弹窗（release notes + 下载）
+                                            onNewVersionFound(info)
+                                        } else {
+                                            updateStatus = "latest"
                                         }
+                                    } catch (_: Exception) {
+                                        updateStatus = "error"
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (checking) {
-                                        Text("⋯", color = colors.textTertiary, fontSize = 12.sp)
-                                        Spacer(Modifier.width(4.dp))
-                                    }
-                                    Text(
-                                        text = T("检查更新", "Check Update", langZh),
-                                        color = colors.accentLight,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
+                                    checking = false
                                 }
                             }
-                        }
-                    }
-
-                    // 自动检查更新 —— 状态在 MainScreen，落盘 SharedPreferences(auto_check_update)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.surfaceDim)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        HmToggle(
-                            label = T("自动检查更新", "Auto-check updates", langZh),
-                            checked = autoCheckUpdate,
-                            onCheckedChange = onAutoCheckUpdateChange,
-                            colors = colors,
-                            hint = T(
-                                "启动后静默检查一次新版本；有更新才弹提示",
-                                "Silently checks once after launch; only alerts on a new version",
-                                langZh
-                            )
-                        )
-                    }
-
-                    // Privacy policy — read-only page (same text as the first-launch gate)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.surfaceDim)
-                            .clickable { onOpenPrivacy() }
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "🔒 " + T("隐私政策", "Privacy Policy", langZh),
-                                color = colors.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text("›", color = colors.textTertiary, fontSize = 16.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = T("检查更新", "Check Update", langZh),
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = when {
+                                        checking -> T("正在检查更新…", "Checking…", langZh)
+                                        updateStatus == "latest" ->
+                                            T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
+                                        updateStatus == "error" ->
+                                            T("检查失败，请检查网络连接", "Check failed, check your network", langZh)
+                                        else -> T("当前版本 v$version · 点击检查", "Current v$version · tap to check", langZh)
+                                    },
+                                    color = when {
+                                        updateStatus == "latest" && !checking -> colors.statusGood
+                                        updateStatus == "error" && !checking -> colors.statusBad
+                                        else -> colors.textTertiary
+                                    },
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                HmSwitch(
+                                    checked = autoCheckUpdate,
+                                    onCheckedChange = onAutoCheckUpdateChange,
+                                    colors = colors
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = T("自动检查", "Auto", langZh),
+                                    color = colors.textTertiary,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
                     }
-
-                    // Update status
-                    if (updateStatus != null) {
-                        Spacer(Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    when {
-                                        updateStatus == "latest" -> colors.statusGood.copy(alpha = 0.1f)
-                                        updateStatus == "error" -> colors.statusBad.copy(alpha = 0.1f)
-                                        else -> colors.surfaceDim
-                                    }
-                                )
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = when {
-                                    updateStatus == "latest" ->
-                                        T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
-                                    else -> T("检查失败，请检查网络连接", "Check failed, check network", langZh)
-                                },
-                                color = when {
-                                    updateStatus == "latest" -> colors.statusGood
-                                    else -> colors.statusBad
-                                },
-                                fontSize = 12.sp
-                            )
-                        }
 
                     Spacer(Modifier.height(20.dp))
 
@@ -1483,8 +1479,20 @@ fun AboutPage(
                     }
                 }
             }
+
+            // 隐私政策入口 —— 关于页最下面的一行蓝字（版本号等内容之后、页尾）
+            Text(
+                text = "《隐私政策》 / 《Privacy Policy》",
+                color = colors.accentLight,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onOpenPrivacy() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
         }
-    }
     }
 }
 

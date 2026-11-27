@@ -259,9 +259,10 @@ class MainActivity : ComponentActivity() {
             EasyTierTheme(darkTheme = if (dynamicColor) isSystemInDarkTheme() else isDarkTheme, dynamicColor = dynamicColor) {
                 if (!privacyAccepted) {
                     // First launch (or policy not yet accepted): full-screen blocking gate.
+                    // 正文是在线拉取的 PRIVACY.md（缓存 → GitHub raw → 镜像 → 内置离线副本）。
                     // No back button, BackHandler consumes the system back — the only ways
                     // out are "accept" or finish(). Re-checked on every process start.
-                    PrivacyPolicyPage(
+                    PrivacyDocPage(
                         langZh = langZh,
                         forced = true,
                         onAccept = { acceptPrivacy() },
@@ -1172,7 +1173,8 @@ class MainActivity : ComponentActivity() {
     //  Privacy gate + Quick Settings tile bridge
     // ═══════════════════════════════════════════════
 
-    /** Persist consent, leave the gate, then run anything that was waiting for it. */
+    /** Persist consent, leave the gate, then run anything that was waiting for it.
+     *  「同意」的那一版正文 hash 由 [PrivacyDocPage] 写进 privacy_md_hash。 */
     private fun acceptPrivacy() {
         getSharedPreferences(PREFS_STATE, MODE_PRIVATE).edit()
             .putBoolean(PREFS_PRIVACY_ACCEPTED, true).apply()

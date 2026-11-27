@@ -372,9 +372,20 @@ private fun BottomNavigationBar(
                 ) {
                     items.forEachIndexed { index, (icon, label, tab) ->
                         val isActive = index == selectedIndex
+                        // Delay the white tint until the indicator has slid in,
+                        // otherwise the label flashes white-on-white mid-travel.
+                        var lit by remember { mutableStateOf(isActive) }
+                        LaunchedEffect(isActive) {
+                            if (isActive) {
+                                delay(180L)
+                                lit = true
+                            } else {
+                                lit = false
+                            }
+                        }
                         val tint by animateColorAsState(
-                            targetValue = if (isActive) Color.White else colors.textTertiary,
-                            animationSpec = tween(300, easing = HarmonyEasing),
+                            targetValue = if (lit) Color.White else colors.textTertiary,
+                            animationSpec = tween(180, easing = HarmonyEasing),
                             label = "navTint"
                         )
                         val iconScale by animateFloatAsState(

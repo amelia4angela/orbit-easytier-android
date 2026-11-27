@@ -52,6 +52,24 @@
             </intent-filter>
         </service>
 
+        <!-- Quick Settings tile: one-tap start / stop from the notification shade -->
+        <service
+            android:name="com.easytier.QuickStartTile"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_manage"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <!-- Shares the downloaded APK (getExternalFilesDir) with the installer -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -2,7 +2,9 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -11,6 +13,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -21,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -139,11 +144,39 @@ fun ConfigForm(
                             )
                         } else {
                             config.nodes.forEachIndexed { index, node ->
+                                // Press feedback, linear on purpose: the elevation ramps straight
+                                // up/down on a fixed-shape shadow pinned to the row's own 10dp
+                                // radius. No scale is applied, so the shadow outline can never
+                                // smear, morph or overshoot while the row is tapped.
+                                val interaction = remember(index) { MutableInteractionSource() }
+                                val pressed by interaction.collectIsPressedAsState()
+                                val lift by animateFloatAsState(
+                                    targetValue = if (pressed) 1f else 0f,
+                                    animationSpec = tween(durationMillis = 110, easing = LinearEasing),
+                                    label = "nodeRowLift"
+                                )
+                                val rowBg by animateColorAsState(
+                                    targetValue = if (pressed) colors.inputBg else colors.surface,
+                                    animationSpec = tween(durationMillis = 110, easing = LinearEasing),
+                                    label = "nodeRowBg"
+                                )
+                                val rowShape = RoundedCornerShape(10.dp)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
+                                        .shadow(
+                                            elevation = (lift * 2f).dp,
+                                            shape = rowShape,
+                                            clip = false,
+                                            ambientColor = ComposeColor.Black.copy(alpha = 0.10f),
+                                            spotColor = ComposeColor.Black.copy(alpha = 0.10f)
+                                        )
+                                        .clip(rowShape)
+                                        .background(rowBg)
+                                        .clickable(
+                                            interactionSource = interaction,
+                                            indication = null
+                                        ) {
                                             editingIndex = index
                                             nodeDialogVisible = true
                                         }

@@ -57,6 +57,9 @@ import java.io.File
 
 private enum class Tab { STATUS, CONFIG, LOGS, MORE }
 
+/** Settings sub-pages, pushed onto a small back stack (never exits the app). */
+private enum class SettingsPage { GENERAL, PERMISSIONS, ABOUT, PRIVACY }
+
 // ═══════════════════════════════════════════════════
 //  MainScreen — 3-tab layout with bottom navigation
 // ═══════════════════════════════════════════════════
@@ -93,7 +96,11 @@ fun MainScreen(
 ) {
     val colors = currentColors()
     var currentTab by remember { mutableStateOf(Tab.STATUS) }
-    var showAboutPage by remember { mutableStateOf(false) }
+    // Sub-page stack: Settings → General → Permissions, About → Privacy Policy.
+    val pageStack = remember { mutableStateListOf<SettingsPage>() }
+    val subPage = pageStack.lastOrNull()
+    fun openPage(page: SettingsPage) { pageStack.add(page) }
+    fun closePage() { if (pageStack.isNotEmpty()) pageStack.removeAt(pageStack.lastIndex) }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -129,18 +136,39 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (showAboutPage) 0.dp else 72.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (subPage != null) 0.dp else 72.dp)
         ) {
-            if (showAboutPage) {
-                // System back → leave the About page (back to "More"), not exit the app.
-                BackHandler { showAboutPage = false }
-                AboutPage(
-                    langZh = langZh,
-                    isConnected = connectionState.status == ConnectionStatus.RUNNING
-                            || connectionState.status == ConnectionStatus.NO_TUN,
-                    connectionStartTime = connectionStartTime,
-                    onBack = { showAboutPage = false }
-                )
+            if (subPage != null) {
+                // System back pops the settings stack (back to Settings / General), never exits.
+                BackHandler { closePage() }
+                when (subPage) {
+                    SettingsPage.GENERAL -> GeneralPage(
+                        langZh = langZh,
+                        onConfigServer = onConfigServer,
+                        onRestartCore = onToggleConnection,
+                        onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
+                        onBack = { closePage() }
+                    )
+                    SettingsPage.PERMISSIONS -> PermissionsPage(
+                        langZh = langZh,
+                        onBack = { closePage() }
+                    )
+                    SettingsPage.ABOUT -> AboutPage(
+                        langZh = langZh,
+                        isConnected = connectionState.status == ConnectionStatus.RUNNING
+                                || connectionState.status == ConnectionStatus.NO_TUN,
+                        connectionStartTime = connectionStartTime,
+                        onBack = { closePage() },
+                        onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
+                    )
+                    SettingsPage.PRIVACY -> PrivacyPolicyPage(
+                        langZh = langZh,
+                        forced = false,
+                        onAccept = { closePage() },
+                        onDecline = { closePage() },
+                        onBack = { closePage() }
+                    )
+                }
             } else {
                 AnimatedContent(
                     targetState = currentTab,
@@ -184,12 +212,12 @@ fun MainScreen(
                 Tab.MORE -> MoreTab(
                     langZh = langZh,
                     onToggleLanguage = onToggleLanguage,
-                    onConfigServer = onConfigServer,
                     isDarkTheme = isDarkTheme,
                     onToggleTheme = onToggleTheme,
                     dynamicColor = dynamicColor,
                     onToggleDynamic = onToggleDynamic,
-                    onNavigateToAbout = { showAboutPage = true },
+                    onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
+                    onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
                     onToggleConnection = onToggleConnection,
                     onOpenLogs = { currentTab = Tab.LOGS },
                     isConnected = connectionState.status == ConnectionStatus.RUNNING
@@ -203,7 +231,7 @@ fun MainScreen(
         }
 
         // Bottom Navigation
-        if (!showAboutPage) {
+        if (subPage == null) {
             BottomNavigationBar(
                 currentTab = currentTab,
                 onTabSelected = { currentTab = it },
@@ -276,8 +304,8 @@ private fun LogsTab(langZh: Boolean) {
             when {
                 !collectionOn -> Text(
                     T(
-                        "日志收集已关闭，请到设置开启",
-                        "Log collection is off — enable it in Settings",
+                        "日志收集已关闭，请到「设置 → 常规」开启",
+                        "Log collection is off — enable it in Settings → General",
                         langZh
                     ),
                     color = colors.textTertiary,
@@ -758,11 +786,11 @@ private fun ActionBtn(
 private fun MoreTab(
     langZh: Boolean,
     onToggleLanguage: () -> Unit,
-    onConfigServer: () -> Unit,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     dynamicColor: Boolean,
     onToggleDynamic: () -> Unit,
+    onNavigateToGeneral: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onToggleConnection: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
@@ -780,10 +808,9 @@ private fun MoreTab(
     val scrollState = rememberScrollState()
 
 
-    // ── Language / Theme pickers + log collection ──
+    // ── Language / Theme pickers ──
     var langDialogVisible by remember { mutableStateOf(false) }
     var themeDialogVisible by remember { mutableStateOf(false) }
-    var logEnabled by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
 
     // 当前主题模式：0 = 浅色, 1 = 深色, 2 = 跟随系统
     val themeIndex = when {
@@ -823,87 +850,14 @@ private fun MoreTab(
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Config Server Entry
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .clickable { onConfigServer() }
-                .padding(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("☁", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        T("配置服务器", "Config Server", langZh),
-                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        T("从远端 URL 一键拉取 TOML 配置", "Fetch TOML config from URL", langZh),
-                        color = colors.textTertiary, fontSize = 12.sp
-                    )
-                }
-                Text("›", color = colors.textTertiary, fontSize = 18.sp)
-            }
-        }
-
-        // Restart Core — same call chain as the old dashboard restart button
+        // General → server / core / logs / permissions (moved to its own sub-page)
         SettingsNavRow(
-            icon = "↻",
-            title = T("重启核心", "Restart Core", langZh),
-            subtitle = T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
+            icon = "⚙",
+            title = T("常规", "General", langZh),
+            subtitle = T("服务器、核心与日志", "Server, core & logs", langZh),
             colors = colors,
-            onClick = { onToggleConnection() }
+            onClick = { onNavigateToGeneral() }
         )
-
-        // Log collection toggle (AppLogger.setEnabled)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .clickable {
-                    val next = !logEnabled
-                    logEnabled = next
-                    com.easytier.AppLogger.setEnabled(next)
-                }
-                .padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("≡", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        T("日志收集", "Log Collection", langZh),
-                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        T(
-                            "默认关闭；开启后最多保留最近 3 天、100 条",
-                            "Off by default; keeps the last 3 days / 100 lines",
-                            langZh
-                        ),
-                        color = colors.textTertiary, fontSize = 12.sp
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                HmSwitch(
-                    checked = logEnabled,
-                    onCheckedChange = { next ->
-                        logEnabled = next
-                        com.easytier.AppLogger.setEnabled(next)
-                    },
-                    colors = colors
-                )
-            }
-        }
 
         // Language — current value + chevron, opens an Apple-style radio sheet
         SettingsNavRow(
@@ -997,7 +951,7 @@ private fun MoreTab(
  * current value and a chevron on the right.
  */
 @Composable
-private fun SettingsNavRow(
+fun SettingsNavRow(
     icon: String,
     title: String,
     colors: AppColors,
@@ -1147,7 +1101,8 @@ fun AboutPage(
     langZh: Boolean,
     isConnected: Boolean = false,
     connectionStartTime: Long = 0L,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenPrivacy: () -> Unit = {}
 ) {
     val ctx = LocalContext.current
     val version: String = remember {
@@ -1409,6 +1364,30 @@ fun AboutPage(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    // Privacy policy — read-only page (same text as the first-launch gate)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.surfaceDim)
+                            .clickable { onOpenPrivacy() }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "🔒 " + T("隐私政策", "Privacy Policy", langZh),
+                                color = colors.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text("›", color = colors.textTertiary, fontSize = 16.sp)
                         }
                     }
 

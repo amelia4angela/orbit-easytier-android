@@ -76,6 +76,12 @@ class MainActivity : ComponentActivity() {
         private const val REQUEST_STORAGE = 2000
         private const val REQUEST_NOTIFICATION = 2001
 
+        /** Shared prefs key — user accepted the privacy policy (first-launch gate). */
+        private const val PREFS_PRIVACY_ACCEPTED = "privacy_accepted"
+
+        /** Intent extra sent by [QuickStartTile]: toggle the tunnel after launch. */
+        const val EXTRA_QUICK_TOGGLE = "quick_toggle"
+
         /** Sentinel value meaning "user hasn't filled this field yet" */
     }
 
@@ -108,6 +114,9 @@ class MainActivity : ComponentActivity() {
     private var configChanged by mutableStateOf(false)   // tracks unsaved changes
     private var appVersion by mutableStateOf("0.1.3")    // read from PackageManager
 
+    // ── Privacy policy gate (first launch must accept before anything else) ──
+    private var privacyAccepted by mutableStateOf(false)
+
     // ── Permission Launchers (modern ActivityResult, works all API levels) ──
     private lateinit var vpnPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>
     private lateinit var storageManageLauncher: androidx.activity.result.ActivityResultLauncher<Intent>
@@ -123,6 +132,8 @@ class MainActivity : ComponentActivity() {
         langZh = getSharedPreferences(PREFS_LANG, MODE_PRIVATE).getBoolean("lang_zh", true)
         isDarkTheme = getSharedPreferences(PREFS_THEME, MODE_PRIVATE).getBoolean("dark_theme", false)
         dynamicColor = getSharedPreferences(PREFS_THEME, MODE_PRIVATE).getBoolean("dynamic_color", false)
+        privacyAccepted = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
+            .getBoolean(PREFS_PRIVACY_ACCEPTED, false)
 
         // ➕ 恢复上次使用的配置名，启动时自动加载对应的配置
         val statePrefs = getSharedPreferences(PREFS_STATE, MODE_PRIVATE)
@@ -212,13 +223,29 @@ class MainActivity : ComponentActivity() {
         }
 
         // ➕ 权限引导：首次启动解释各权限用途，用户同意后才请求
-        showPermissionIntroDialogIfNeeded()
+        // （隐私政策未同意前不弹：首次启动先过隐私政策门）
+        if (privacyAccepted) showPermissionIntroDialogIfNeeded()
 
         notificationHelper = NotificationHelper(this)
         notificationHelper?.createChannels()
 
+        // QS tile tap while the process was dead → run the pending toggle
+        handleQuickToggle()
+
         setContent {
             EasyTierTheme(darkTheme = if (dynamicColor) isSystemInDarkTheme() else isDarkTheme, dynamicColor = dynamicColor) {
+                if (!privacyAccepted) {
+                    // First launch (or policy not yet accepted): full-screen blocking gate.
+                    // No back button, BackHandler consumes the system back — the only ways
+                    // out are "accept" or finish(). Re-checked on every process start.
+                    PrivacyPolicyPage(
+                        langZh = langZh,
+                        forced = true,
+                        onAccept = { acceptPrivacy() },
+                        onDecline = { finish() },
+                        onBack = { finish() }
+                    )
+                } else {
                 MainScreen(
                     connectionState = connectionState,
                     onToggleConnection = {
@@ -424,6 +451,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                } // end else (privacyAccepted)
             }
         }
     }
@@ -1070,10 +1098,68 @@ class MainActivity : ComponentActivity() {
 
     private var pollingJob: kotlinx.coroutines.Job? = null
 
+    // ═══════════════════════════════════════════════
+    //  Privacy gate + Quick Settings tile bridge
+    // ═══════════════════════════════════════════════
+
+    /** Persist consent, leave the gate, then run anything that was waiting for it. */
+    private fun acceptPrivacy() {
+        getSharedPreferences(PREFS_STATE, MODE_PRIVATE).edit()
+            .putBoolean(PREFS_PRIVACY_ACCEPTED, true).apply()
+        privacyAccepted = true
+        AppLogger.i("MainActivity", "Privacy policy accepted")
+        // The one-time permission explainer only makes sense after consent.
+        showPermissionIntroDialogIfNeeded()
+        // A tile tap that arrived before consent is still pending on the intent.
+        handleQuickToggle()
+    }
+
+    /**
+     * Quick Settings tile bridge — [QuickStartTile] cannot validate the config nor
+     * show the system VPN consent dialog, so it launches this activity with
+     * [EXTRA_QUICK_TOGGLE] and we reuse the normal start/stop chains here.
+     * The extra is consumed (removed) so a config-change relaunch won't re-toggle.
+     */
+    private fun handleQuickToggle() {
+        val pending = intent?.getBooleanExtra(EXTRA_QUICK_TOGGLE, false) ?: false
+        if (!pending) return
+        if (!privacyAccepted) return          // stay pending until the user consents
+        intent?.removeExtra(EXTRA_QUICK_TOGGLE)
+        AppLogger.i("MainActivity", "Quick tile toggle: running=${EasyTierManager.isRunning}")
+        if (EasyTierManager.isRunning || isRunning) stopEasyTier() else startEasyTier()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleQuickToggle()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The QS tile can stop the tunnel while this activity is paused — resync on return
+        // so the status card does not keep showing "Running" for a dead tunnel.
+        if (isRunning && !EasyTierManager.isRunning) {
+            isRunning = false
+            stopPolling()
+            myNodeItem = null
+            peerItems = emptyList()
+            updateConnectionState(ConnectionStatus.STOPPED)
+        }
+    }
+
     private fun startPolling() {
         pollingJob?.cancel()
         pollingJob = lifecycleScope.launch(Dispatchers.Main) {
             while (isActive && this@MainActivity.isRunning) {
+                // Tunnel stopped from outside (QS tile / system) — fold the UI to STOPPED.
+                if (!EasyTierManager.isRunning) {
+                    this@MainActivity.isRunning = false
+                    myNodeItem = null
+                    peerItems = emptyList()
+                    updateConnectionState(ConnectionStatus.STOPPED)
+                    break
+                }
                 refreshPeerInfo()
                 delay(1000L)
             }

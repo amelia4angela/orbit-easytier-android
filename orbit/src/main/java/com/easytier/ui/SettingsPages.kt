@@ -37,6 +37,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.easytier.AppLogger
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
+import androidx.compose.ui.graphics.Color as ComposeColor
 
 // ═══════════════════════════════════════════════════
 //  Shared shell for settings sub-pages
@@ -135,6 +136,15 @@ fun GeneralPage(
     val memoryLevel = config.memoryLimit.ifEmpty { com.easytier.RuntimeTuning.MEMORY_STANDARD }
 
     SettingsSubPage(title = T("常规", "General", langZh), onBack = onBack) {
+        // 1. 权限管理 — top of General
+        SettingsNavRow(
+            icon = "🛡",
+            title = T("权限管理", "Permissions", langZh),
+            subtitle = T("通知、VPN、电池优化与安装", "Notifications, VPN, battery & install", langZh),
+            colors = colors,
+            onClick = onOpenPermissions
+        )
+
         // 顺序：常用开关在前 → 动作在后 → 相关聚合
         // 1. 省电模式 — slows the polling/notification cadence in the background
         //    and injects EasyTier power flags (disable_upnp) into the generated TOML.
@@ -254,32 +264,45 @@ fun GeneralPage(
             }
         }
 
-        // 4. 配置服务器
-        SettingsNavRow(
-            icon = "☁",
-            title = T("配置服务器", "Config Server", langZh),
-            subtitle = T("从远端 URL 一键拉取 TOML 配置", "Fetch TOML config from URL", langZh),
-            colors = colors,
-            onClick = onConfigServer
-        )
-
-        // 5. 重启核心 — same call chain as the old dashboard restart button
-        SettingsNavRow(
-            icon = "↻",
-            title = T("重启核心", "Restart Core", langZh),
-            subtitle = T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
-            colors = colors,
-            onClick = onRestartCore
-        )
-
-        // 6. 权限管理
-        SettingsNavRow(
-            icon = "🛡",
-            title = T("权限管理", "Permissions", langZh),
-            subtitle = T("通知、VPN、电池优化与安装", "Notifications, VPN, battery & install", langZh),
-            colors = colors,
-            onClick = onOpenPermissions
-        )
+        // 4. 重启核心 — eye-catching action row: red button instead of a chevron
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
+                .clickable { onRestartCore() }
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("↻", fontSize = 20.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        T("重启核心", "Restart Core", langZh),
+                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
+                        color = colors.textTertiary, fontSize = 12.sp
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.statusBad)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        T("重启", "Restart", langZh),
+                        color = ComposeColor.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -295,6 +295,7 @@ fun MainScreen(
                         onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
                         onNavigateToTheme = { openPage(SettingsPage.THEME) },
                         onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
+                        onConfigServer = onConfigServer,
                         onToggleConnection = onToggleConnection,
                         onOpenLogs = { currentTab = Tab.LOGS },
                         isConnected = connectionState.status == ConnectionStatus.RUNNING
@@ -948,6 +949,7 @@ private fun MoreTab(
     onNavigateToGeneral: () -> Unit,
     onNavigateToTheme: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onConfigServer: () -> Unit,
     onToggleConnection: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
     isConnected: Boolean = false,
@@ -1005,7 +1007,16 @@ private fun MoreTab(
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // General → server / core / logs / permissions (moved to its own sub-page)
+        // Config Server — lifted out of General, sits at the very top
+        SettingsNavRow(
+            icon = "☁",
+            title = T("配置服务器", "Config Server", langZh),
+            subtitle = T("从远端 URL 一键拉取 TOML 配置", "Fetch TOML config from URL", langZh),
+            colors = colors,
+            onClick = { onConfigServer() }
+        )
+
+        // General → core / logs / permissions (moved to its own sub-page)
         SettingsNavRow(
             icon = "⚙",
             title = T("常规", "General", langZh),
@@ -1081,6 +1092,7 @@ fun SettingsNavRow(
     colors: AppColors,
     subtitle: String? = null,
     value: String? = null,
+    showChevron: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
@@ -1108,7 +1120,9 @@ fun SettingsNavRow(
                 Text(value, color = colors.textSecondary, fontSize = 13.sp)
                 Spacer(Modifier.width(6.dp))
             }
-            Text("›", color = colors.textTertiary, fontSize = 18.sp)
+            if (showChevron) {
+                Text("›", color = colors.textTertiary, fontSize = 18.sp)
+            }
         }
     }
 }

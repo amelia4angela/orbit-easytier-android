@@ -17,9 +17,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.easytier.ui.ConfigForm
 import com.easytier.ui.ConfigState
 import com.easytier.ui.theme.EasyTierTheme
@@ -126,6 +128,27 @@ class ConfigEditActivity : AppCompatActivity() {
         var showNewConfigDialog by remember { mutableStateOf(false) }
         var showDeleteConfirm by remember { mutableStateOf(false) }
         var showExportSheet by remember { mutableStateOf(false) }
+
+        // Share: write the generated .toml into filesDir and hand it to any app
+        val shareCtx = LocalContext.current
+        fun shareToml() {
+            try {
+                val toml = TomlUtils.buildToml(configState)
+                val dir = File(shareCtx.filesDir, "share").apply { mkdirs() }
+                val safeName = configName.trim().ifEmpty { "config" }.replace(Regex("[^\\w.-]"), "_")
+                val file = File(dir, "$safeName.toml")
+                file.writeText(toml)
+                val uri = FileProvider.getUriForFile(shareCtx, shareCtx.packageName + ".fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                shareCtx.startActivity(Intent.createChooser(send, "Share config"))
+            } catch (e: Exception) {
+                Toast.makeText(shareCtx, "Share failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
         var exportTomlContent by remember { mutableStateOf("") }
         val configNames = remember { mutableStateListOf<String>() }
         // Refresh config list
@@ -185,12 +208,26 @@ class ConfigEditActivity : AppCompatActivity() {
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Icon(
-                                Icons.Default.Share,
+                                Icons.Default.Save,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(tr("导出", "Export"), maxLines = 1)
+                        }
+
+                        // Share — hand the generated .toml to any app via ACTION_SEND
+                        OutlinedButton(
+                            onClick = { shareToml() },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(tr("分享", "Share"), maxLines = 1)
                         }
 
                         Button(

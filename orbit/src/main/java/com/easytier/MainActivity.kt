@@ -114,6 +114,10 @@ class MainActivity : ComponentActivity() {
     private var appliedMemoryLimit = RuntimeTuning.MEMORY_STANDARD
     // Log dialog state
     private var showLogDialogState by mutableStateOf(false)
+    /** 配置管理器弹窗（Compose 版）：非 null 表示打开，值为打开时的配置名列表 */
+    private var configManagerNames by mutableStateOf<List<String>?>(null)
+    /** 配置服务器弹窗（Compose 版） */
+    private var configServerVisible by mutableStateOf(false)
     private var peerInfoExpanded by mutableStateOf(false)
     private var currentConfigName by mutableStateOf("default")
     private var configChanged by mutableStateOf(false)   // tracks unsaved changes
@@ -303,6 +307,40 @@ class MainActivity : ComponentActivity() {
                             .putBoolean("dynamic_color", dynamicColor).apply()
                     },
                     connectionStartTime = startedAt
+                )
+
+                // 配置管理器 / 配置服务器 —— 统一 HmDialog 外观（逻辑仍在 MainActivity）
+                val managerNames = configManagerNames
+                if (managerNames != null) {
+                    ConfigManagerDialog(
+                        names = managerNames,
+                        currentName = currentConfigName,
+                        langZh = langZh,
+                        onSelect = { idx ->
+                            configManagerNames = null
+                            managerNames.getOrNull(idx)?.let { loadConfig(it) }
+                        },
+                        onNew = {
+                            configManagerNames = null
+                            promptSaveAs()
+                        },
+                        onDelete = {
+                            configManagerNames = null
+                            showDeleteConfigDialog()
+                        },
+                        onDismiss = { configManagerNames = null }
+                    )
+                }
+
+                ConfigServerDialog(
+                    visible = configServerVisible,
+                    langZh = langZh,
+                    onFetch = { url ->
+                        configServerVisible = false
+                        val target = url.trim()
+                        if (target.isNotEmpty()) fetchConfigFromServer(target)
+                    },
+                    onDismiss = { configServerVisible = false }
                 )
 
                 // Log dialog — Compose version with auto-scroll + pause
@@ -888,23 +926,15 @@ class MainActivity : ComponentActivity() {
 
     private fun showConfigManagerDialog() {
         val names = listConfigFiles()
-        val items = names.map { n ->
-            if (n == currentConfigName) "$n ✓" else n
-        }.toTypedArray()
 
-        if (items.isEmpty()) {
+        if (names.isEmpty()) {
             Toast.makeText(this, tr("暂无配置，请输入参数后保存", "No configs yet"), Toast.LENGTH_SHORT).show()
             return
         }
 
-        AlertDialog.Builder(this)
-            .setTitle(tr("配置管理器", "Config Manager"))
-            .setMessage(tr("当前: $currentConfigName", "Current: $currentConfigName"))
-            .setItems(items) { _, which -> loadConfig(names[which]) }
-            .setPositiveButton(tr("新建…", "New…")) { _, _ -> promptSaveAs() }
-            .setNeutralButton(tr("删除", "Delete")) { _, _ -> showDeleteConfigDialog() }
-            .setNegativeButton(tr("取消", "Cancel"), null)
-            .show()
+        // 外观统一走 Compose 的 ConfigManagerDialog（HmDialog 外壳），逻辑不变：
+        // 列表点选 = 切换配置，底部「新建…」「删除」「取消」。
+        configManagerNames = names
     }
 
     private fun showDeleteConfigDialog() {
@@ -1684,19 +1714,9 @@ class MainActivity : ComponentActivity() {
     // ═══════════════════════════════════════════════
 
     private fun promptConfigServer() {
-        val input = EditText(this)
-        input.setSingleLine(true)
-        input.hint = if (langZh) "\u8f93\u5165\u914d\u7f6e\u670d\u52a1\u5668 URL" else "Enter config server URL"
-
-        AlertDialog.Builder(this)
-            .setTitle(tr("\u8fde\u63a5\u914d\u7f6e\u670d\u52a1\u5668", "Config Server"))
-            .setView(input)
-            .setPositiveButton(tr("\u83b7\u53d6", "Fetch")) { _: DialogInterface, _: Int ->
-                val url = input.text.toString().trim()
-                if (url.isNotEmpty()) fetchConfigFromServer(url)
-            }
-            .setNegativeButton(tr("\u53d6\u6d88", "Cancel"), null)
-            .show()
+        // 外观统一走 Compose 的 ConfigServerDialog（HmDialog 外壳），
+        // 输入框 + 「获取」「取消」的行为与原 AlertDialog 一致。
+        configServerVisible = true
     }
 
     private fun fetchConfigFromServer(url: String) {

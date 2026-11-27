@@ -100,8 +100,20 @@ fun MainScreen(
     // Sub-page stack: Settings → General → Permissions, About → Privacy Policy.
     val pageStack = remember { mutableStateListOf<SettingsPage>() }
     val subPage = pageStack.lastOrNull()
-    fun openPage(page: SettingsPage) { pageStack.add(page) }
-    fun closePage() { if (pageStack.isNotEmpty()) pageStack.removeAt(pageStack.lastIndex) }
+    // Direction of the last pageStack change: drives the enter/exit transition.
+    var navForward by remember { mutableStateOf(true) }
+    fun openPage(page: SettingsPage) {
+        navForward = true
+        pageStack.add(page)
+    }
+    fun closePage() {
+        navForward = false
+        if (pageStack.isNotEmpty()) pageStack.removeAt(pageStack.lastIndex)
+    }
+
+    // System back pops the settings stack (back to Settings / General), never exits.
+    // Kept outside the animated content so a mid-transition press can't double-pop.
+    BackHandler(enabled = pageStack.isNotEmpty()) { closePage() }
 
     Box(
         modifier = modifier.fillMaxSize()
@@ -139,103 +151,121 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (subPage != null) 0.dp else 72.dp)
         ) {
-            if (subPage != null) {
-                // System back pops the settings stack (back to Settings / General), never exits.
-                BackHandler { closePage() }
-                when (subPage) {
-                    SettingsPage.GENERAL -> GeneralPage(
+            // 二三级页进出转场：进入 = 新页从右滑入 + 淡入（it/4，260ms）；
+            // 返回 = 当前页向右滑出 + 淡出。同一套 HarmonyEasing，pageStack 逻辑不变。
+            AnimatedContent(
+                targetState = subPage,
+                transitionSpec = {
+                    if (navForward) {
+                        (slideInHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
+                            fadeIn(tween(260, easing = HarmonyEasing)))
+                            .togetherWith(fadeOut(tween(120, easing = HarmonyEasing)))
+                    } else {
+                        fadeIn(tween(200, easing = HarmonyEasing))
+                            .togetherWith(
+                                slideOutHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
+                                    fadeOut(tween(200, easing = HarmonyEasing))
+                            )
+                    }
+                },
+                label = "settingsPageTransition"
+            ) { page ->
+                if (page != null) {
+                    when (page) {
+                        SettingsPage.GENERAL -> GeneralPage(
+                            langZh = langZh,
+                            config = config,
+                            onConfigChange = onConfigChange,
+                            onConfigServer = onConfigServer,
+                            onRestartCore = onToggleConnection,
+                            onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
+                            onBack = { closePage() }
+                        )
+                        SettingsPage.PERMISSIONS -> PermissionsPage(
+                            langZh = langZh,
+                            onBack = { closePage() }
+                        )
+                        SettingsPage.THEME -> ThemePage(
+                            langZh = langZh,
+                            isDarkTheme = isDarkTheme,
+                            dynamicColor = dynamicColor,
+                            onToggleTheme = onToggleTheme,
+                            onToggleDynamic = onToggleDynamic,
+                            onBack = { closePage() }
+                        )
+                        SettingsPage.ABOUT -> AboutPage(
+                            langZh = langZh,
+                            isConnected = connectionState.status == ConnectionStatus.RUNNING
+                                    || connectionState.status == ConnectionStatus.NO_TUN,
+                            connectionStartTime = connectionStartTime,
+                            onBack = { closePage() },
+                            onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
+                        )
+                        SettingsPage.PRIVACY -> PrivacyPolicyPage(
+                            langZh = langZh,
+                            forced = false,
+                            onAccept = { closePage() },
+                            onDecline = { closePage() },
+                            onBack = { closePage() }
+                        )
+                    }
+                } else {
+                    AnimatedContent(
+                        targetState = currentTab,
+                        transitionSpec = {
+                            (fadeIn(tween(300, easing = HarmonyEasing)) +
+                                slideInHorizontally(initialOffsetX = { it / 6 }))
+                                .togetherWith(
+                                    fadeOut(tween(200, easing = HarmonyEasing)) +
+                                        slideOutHorizontally(targetOffsetX = { -it / 6 })
+                                )
+                        },
+                        label = "tabTransition"
+                    ) { tab ->
+                    when (tab) {
+                        Tab.STATUS -> StatusTab(
+                        connectionState = connectionState,
+                        onToggleConnection = onToggleConnection,
+                        myNodeItem = myNodeItem,
+                        peerItems = peerItems,
                         langZh = langZh,
+                        connectionStartTime = connectionStartTime
+                    )
+                    Tab.CONFIG -> ConfigTab(
                         config = config,
                         onConfigChange = onConfigChange,
-                        onConfigServer = onConfigServer,
-                        onRestartCore = onToggleConnection,
-                        onOpenPermissions = { openPage(SettingsPage.PERMISSIONS) },
-                        onBack = { closePage() }
-                    )
-                    SettingsPage.PERMISSIONS -> PermissionsPage(
+                        currentConfigName = currentConfigName,
                         langZh = langZh,
-                        onBack = { closePage() }
+                        onConfigNameClick = onConfigNameClick,
+                        onSaveConfig = onSaveConfig,
+                        onAutoSaveConfig = onAutoSaveConfig,
+                        onManageConfigs = onManageConfigs,
+                        onImportToml = onImportToml,
+                        onExportToml = onExportToml,
+                        onDeleteConfig = onDeleteConfig,
+                        onLaunchConfigEditor = onLaunchConfigEditor,
+                        onApplyConfig = {
+                            onToggleConnection()
+                            currentTab = Tab.STATUS
+                        }
                     )
-                    SettingsPage.THEME -> ThemePage(
+                    Tab.MORE -> MoreTab(
                         langZh = langZh,
+                        onToggleLanguage = onToggleLanguage,
                         isDarkTheme = isDarkTheme,
                         dynamicColor = dynamicColor,
-                        onToggleTheme = onToggleTheme,
-                        onToggleDynamic = onToggleDynamic,
-                        onBack = { closePage() }
-                    )
-                    SettingsPage.ABOUT -> AboutPage(
-                        langZh = langZh,
+                        onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
+                        onNavigateToTheme = { openPage(SettingsPage.THEME) },
+                        onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
+                        onToggleConnection = onToggleConnection,
+                        onOpenLogs = { currentTab = Tab.LOGS },
                         isConnected = connectionState.status == ConnectionStatus.RUNNING
                                 || connectionState.status == ConnectionStatus.NO_TUN,
-                        connectionStartTime = connectionStartTime,
-                        onBack = { closePage() },
-                        onOpenPrivacy = { openPage(SettingsPage.PRIVACY) }
+                        connectionStartTime = connectionStartTime
                     )
-                    SettingsPage.PRIVACY -> PrivacyPolicyPage(
-                        langZh = langZh,
-                        forced = false,
-                        onAccept = { closePage() },
-                        onDecline = { closePage() },
-                        onBack = { closePage() }
-                    )
-                }
-            } else {
-                AnimatedContent(
-                    targetState = currentTab,
-                    transitionSpec = {
-                        (fadeIn(tween(300, easing = HarmonyEasing)) +
-                            slideInHorizontally(initialOffsetX = { it / 6 }))
-                            .togetherWith(
-                                fadeOut(tween(200, easing = HarmonyEasing)) +
-                                    slideOutHorizontally(targetOffsetX = { -it / 6 })
-                            )
-                    },
-                    label = "tabTransition"
-                ) { tab ->
-                when (tab) {
-                    Tab.STATUS -> StatusTab(
-                    connectionState = connectionState,
-                    onToggleConnection = onToggleConnection,
-                    myNodeItem = myNodeItem,
-                    peerItems = peerItems,
-                    langZh = langZh,
-                    connectionStartTime = connectionStartTime
-                )
-                Tab.CONFIG -> ConfigTab(
-                    config = config,
-                    onConfigChange = onConfigChange,
-                    currentConfigName = currentConfigName,
-                    langZh = langZh,
-                    onConfigNameClick = onConfigNameClick,
-                    onSaveConfig = onSaveConfig,
-                    onAutoSaveConfig = onAutoSaveConfig,
-                    onManageConfigs = onManageConfigs,
-                    onImportToml = onImportToml,
-                    onExportToml = onExportToml,
-                    onDeleteConfig = onDeleteConfig,
-                    onLaunchConfigEditor = onLaunchConfigEditor,
-                    onApplyConfig = {
-                        onToggleConnection()
-                        currentTab = Tab.STATUS
+                    Tab.LOGS -> LogsTab(langZh = langZh)
                     }
-                )
-                Tab.MORE -> MoreTab(
-                    langZh = langZh,
-                    onToggleLanguage = onToggleLanguage,
-                    isDarkTheme = isDarkTheme,
-                    dynamicColor = dynamicColor,
-                    onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
-                    onNavigateToTheme = { openPage(SettingsPage.THEME) },
-                    onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
-                    onToggleConnection = onToggleConnection,
-                    onOpenLogs = { currentTab = Tab.LOGS },
-                    isConnected = connectionState.status == ConnectionStatus.RUNNING
-                            || connectionState.status == ConnectionStatus.NO_TUN,
-                    connectionStartTime = connectionStartTime
-                )
-                Tab.LOGS -> LogsTab(langZh = langZh)
-                }
+                    }
                 }
             }
         }
@@ -819,8 +849,7 @@ private fun MoreTab(
 
 
     // ── Language / Theme entries ──
-    // 语言：底部抽屉；主题：二级页（pageStack + BackHandler）
-    var langSheetVisible by remember { mutableStateOf(false) }
+    // 语言：行下方下拉弹层（[HmDropdownField]）；主题：二级页（pageStack + BackHandler）
 
     // 当前主题模式：0 = 浅色, 1 = 深色, 2 = 跟随系统
     val themeIndex = when {
@@ -864,18 +893,24 @@ private fun MoreTab(
         SettingsNavRow(
             icon = "⚙",
             title = T("常规", "General", langZh),
-            subtitle = T("服务器、核心与日志", "Server, core & logs", langZh),
             colors = colors,
             onClick = { onNavigateToGeneral() }
         )
 
-        // Language — current value + chevron, opens a bottom sheet
-        SettingsNavRow(
-            icon = "⋮",
-            title = T("语言", "Language", langZh),
-            value = if (langZh) "中文" else "English",
+        // Language — 当前值 + 三角指示，点开行下方弹层（简体中文 / English）
+        HmDropdownField(
+            label = T("语言", "Language", langZh),
+            options = listOf(
+                HmDropdownOption(label = "简体中文", value = "zh"),
+                HmDropdownOption(label = "English", value = "en")
+            ),
+            selectedIndex = if (langZh) 0 else 1,
+            onSelect = { idx ->
+                val wantZh = idx == 0
+                if (wantZh != langZh) onToggleLanguage()
+            },
             colors = colors,
-            onClick = { langSheetVisible = true }
+            card = true
         )
 
         // Theme — current value + chevron, enters the theme sub-page
@@ -916,18 +951,6 @@ private fun MoreTab(
 
         Spacer(Modifier.height(8.dp))
     }
-
-
-    // Language picker — bottom sheet, applies on tap and slides back out
-    LanguageSheet(
-        visible = langSheetVisible,
-        langZh = langZh,
-        onSelect = { zh ->
-            if (zh != langZh) onToggleLanguage()
-            langSheetVisible = false
-        },
-        onDismiss = { langSheetVisible = false }
-    )
 }
 
 /**
@@ -973,125 +996,6 @@ fun SettingsNavRow(
     }
 }
 
-/**
- * 语言选择：从底部滑入的圆角面板（20dp 顶圆角、玻璃底、拖动条 + 单选高亮）。
- * 点选即生效并滑出；背景是半透明遮罩，点击遮罩关闭。
- * 滑入 260ms / 滑出 220ms，遮罩 200ms，全部走 [HarmonyEasing]。
- */
-@Composable
-private fun LanguageSheet(
-    visible: Boolean,
-    langZh: Boolean,
-    onSelect: (zh: Boolean) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val colors = currentColors()
-
-    // Keep the Dialog mounted until the slide-out finishes.
-    var mounted by remember { mutableStateOf(false) }
-    LaunchedEffect(visible) {
-        if (visible) {
-            mounted = true
-        } else if (mounted) {
-            delay(280)
-            mounted = false
-        }
-    }
-    if (!mounted) return
-
-    val sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // ── Scrim（点击关闭）──
-            AnimatedVisibility(
-                visible = visible,
-                enter = fadeIn(tween(200, easing = HarmonyEasing)),
-                exit = fadeOut(tween(200, easing = HarmonyEasing))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.42f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onDismiss() }
-                )
-            }
-
-            // ── Sheet ──
-            AnimatedVisibility(
-                visible = visible,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(tween(260, easing = HarmonyEasing)) { it } +
-                        fadeIn(tween(200, easing = HarmonyEasing)),
-                exit = slideOutVertically(tween(220, easing = HarmonyEasing)) { it } +
-                        fadeOut(tween(160, easing = HarmonyEasing))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(10.dp, sheetShape, clip = false)
-                        .clip(sheetShape)
-                        .background(colors.surface)
-                        .border(0.5.dp, colors.glassHighlight, sheetShape)
-                        .navigationBarsPadding()
-                        .padding(bottom = 10.dp)
-                ) {
-                    // Drag handle
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = 8.dp, bottom = 8.dp)
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(colors.inputBorder)
-                    )
-                    Text(
-                        text = T("语言", "Language", langZh),
-                        color = colors.textPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 20.dp, bottom = 6.dp)
-                    )
-                    listOf(true to "简体中文", false to "English").forEach { (zh, label) ->
-                        val selected = zh == langZh
-                        val bg by animateColorAsState(
-                            targetValue = if (selected) colors.accentContainer else Color.Transparent,
-                            animationSpec = tween(200, easing = HarmonyEasing),
-                            label = "langRowBg"
-                        )
-                        Row(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 2.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(bg)
-                                .clickable { onSelect(zh) }
-                                .padding(horizontal = 12.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (selected) colors.accentLight else colors.textSecondary,
-                                fontSize = 15.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (selected) {
-                                Text("✓", color = colors.accentLight, fontSize = 15.sp)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                }
-            }
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════
 //  AboutPage — full-screen about screen
@@ -1148,23 +1052,17 @@ fun AboutPage(
                 Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
             )
     ) {
-        // Back button + title
+        // Back control + title
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surface)
-                    .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                    .clickable { onBack() }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("← " + T("返回", "Back", langZh), color = colors.accentLight, fontSize = 13.sp)
-            }
+            HmBackGlyph(
+                onBack = onBack,
+                colors = colors,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
             Text(
                 T("关于 Orbit", "About Orbit", langZh),
                 color = colors.textPrimary,

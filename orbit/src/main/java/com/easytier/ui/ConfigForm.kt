@@ -638,26 +638,79 @@ fun ConfigForm(
                             )
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HmTextField(
-                                value = config.encryptAlgo,
-                                onValueChange = { onConfigChange(config.copy(encryptAlgo = it)) },
-                                label = T("加密算法", "Encrypt Algo", langZh),
-                                placeholder = T("留空=自动", "empty=auto", langZh),
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                hint = T("留空自动，如 aes-256-gcm", "Empty = auto, e.g. aes-256-gcm", langZh)
+                        // 加密 / 压缩：只列 EasyTier 2.6.4 真正支持的取值
+                        //  - 加密 config.rs 的 EncryptionAlgorithm: xor / aes-gcm / aes-256-gcm / chacha20
+                        //    （空串 = 核心默认 aes-gcm；xor 是不安全回退，不放进选项）
+                        //  - 压缩 proto 的 CompressionAlgoPb: Invalid=0 / None=1 / Zstd=2，没有 lz4
+                        val encryptAlgoOptions = listOf(
+                            HmDropdownOption(
+                                label = T("自动（留空）", "Auto (empty)", langZh),
+                                value = ""
+                            ),
+                            HmDropdownOption(
+                                label = "aes-gcm",
+                                value = "aes-gcm",
+                                hint = T("核心默认，有 AES 加速时最快", "Core default; fastest with AES-NI", langZh)
+                            ),
+                            HmDropdownOption(label = "aes-256-gcm", value = "aes-256-gcm"),
+                            HmDropdownOption(
+                                label = "chacha20",
+                                value = "chacha20",
+                                hint = T(
+                                    "ChaCha20-Poly1305，无 AES 加速时更快",
+                                    "ChaCha20-Poly1305; faster without AES-NI",
+                                    langZh
+                                )
                             )
-                            HmTextField(
-                                value = config.compression,
-                                onValueChange = { onConfigChange(config.copy(compression = it)) },
-                                label = T("压缩", "Compression", langZh),
-                                placeholder = "none / zstd",
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                hint = T("留空不压缩，可选 zstd", "Empty = none; zstd available", langZh)
+                        )
+                        HmDropdownField(
+                            label = T("加密算法", "Encrypt Algo", langZh),
+                            options = encryptAlgoOptions,
+                            selectedIndex = encryptAlgoOptions.indexOfFirst {
+                                it.value == config.encryptAlgo.trim().lowercase()
+                            },
+                            onSelect = { idx ->
+                                onConfigChange(config.copy(encryptAlgo = encryptAlgoOptions[idx].value))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = colors,
+                            fallbackValue = config.encryptAlgo.trim(),
+                            hint = T(
+                                "留空自动（aes-gcm）；只列官方支持的套件",
+                                "Empty = auto (aes-gcm); official suites only",
+                                langZh
                             )
-                        }
+                        )
+
+                        val compressionOptions = listOf(
+                            HmDropdownOption(
+                                label = T("关闭（留空）", "Off (empty)", langZh),
+                                value = ""
+                            ),
+                            HmDropdownOption(
+                                label = "zstd",
+                                value = "zstd",
+                                hint = T("官方 2.6.4 唯一可用的压缩算法", "The only compression algo in 2.6.4", langZh)
+                            )
+                        )
+                        HmDropdownField(
+                            label = T("压缩算法", "Compression", langZh),
+                            options = compressionOptions,
+                            selectedIndex = compressionOptions.indexOfFirst {
+                                it.value == config.compression.trim().lowercase()
+                            },
+                            onSelect = { idx ->
+                                onConfigChange(config.copy(compression = compressionOptions[idx].value))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = colors,
+                            fallbackValue = config.compression.trim(),
+                            hint = T(
+                                "留空不压缩；zstd 会增加少量 CPU 开销",
+                                "Empty = no compression; zstd costs a little CPU",
+                                langZh
+                            )
+                        )
 
                         // Extra
                         SectionLabel(T("附加", "Extra", langZh), colors)

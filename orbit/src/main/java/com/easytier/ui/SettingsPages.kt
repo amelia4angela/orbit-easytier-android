@@ -43,7 +43,28 @@ import com.easytier.ui.theme.currentColors
 // ═══════════════════════════════════════════════════
 
 /**
- * Full-screen settings sub-page: gradient background, back button + centered title,
+ * 二三级页统一的返回控件：一个 `<` 字符 + 44dp 点击区，不再是按钮外观
+ * （无底色、无描边）。点击行为仍由调用方传入的 [onBack] 决定（pageStack pop）。
+ */
+@Composable
+fun HmBackGlyph(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    colors: AppColors = currentColors()
+) {
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onBack() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text("<", color = colors.accentLight, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * Full-screen settings sub-page: gradient background, back control + centered title,
  * scrollable body. Same visual language as [AboutPage].
  *
  * The caller owns the back stack (it registers the BackHandler), so [onBack] is
@@ -52,7 +73,6 @@ import com.easytier.ui.theme.currentColors
 @Composable
 fun SettingsSubPage(
     title: String,
-    langZh: Boolean,
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -67,19 +87,13 @@ fun SettingsSubPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surface)
-                    .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                    .clickable { onBack() }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text("← " + T("返回", "Back", langZh), color = colors.accentLight, fontSize = 13.sp)
-            }
+            HmBackGlyph(
+                onBack = onBack,
+                colors = colors,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
             Text(
                 title,
                 color = colors.textPrimary,
@@ -117,49 +131,84 @@ fun GeneralPage(
 ) {
     val colors = currentColors()
     var logEnabled by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
-    var memoryDialogVisible by remember { mutableStateOf(false) }
 
     val memoryLevel = config.memoryLimit.ifEmpty { com.easytier.RuntimeTuning.MEMORY_STANDARD }
-    val memoryLabel = memoryLevelLabel(memoryLevel, langZh)
 
-    SettingsSubPage(title = T("常规", "General", langZh), langZh = langZh, onBack = onBack) {
-        // 1. Config server
+    SettingsSubPage(title = T("常规", "General", langZh), onBack = onBack) {
+        // 顺序：常用开关在前 → 动作在后 → 相关聚合
+        // 1. 省电模式 — slows the polling/notification cadence in the background
+        //    and injects EasyTier power flags (disable_upnp) into the generated TOML.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(colors.surface)
                 .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .clickable { onConfigServer() }
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("☁", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔋", fontSize = 20.sp)
+                    Spacer(Modifier.width(12.dp))
                     Text(
-                        T("配置服务器", "Config Server", langZh),
+                        T("省电模式", "Power Saving", langZh),
                         color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
                     )
-                    Text(
-                        T("从远端 URL 一键拉取 TOML 配置", "Fetch TOML config from URL", langZh),
-                        color = colors.textTertiary, fontSize = 12.sp
-                    )
                 }
-                Text("›", color = colors.textTertiary, fontSize = 18.sp)
+                Spacer(Modifier.height(4.dp))
+                HmToggle(
+                    label = T("后台降频", "Slow down in background", langZh),
+                    checked = config.powerSaving,
+                    onCheckedChange = { onConfigChange(config.copy(powerSaving = it)) },
+                    hint = T(
+                        "熄屏/后台时状态刷新从 1s 放宽到 60s、通知 60s 一次；同时关闭 EasyTier 的 UPnP 探测。回到前台立即恢复",
+                        "When backgrounded: status every 60s instead of 1s, notification every 60s, UPnP probing off. Restored instantly in foreground",
+                        langZh
+                    ),
+                    colors = colors
+                )
             }
         }
 
-        // 2. Restart core — same call chain as the old dashboard restart button
-        SettingsNavRow(
-            icon = "↻",
-            title = T("重启核心", "Restart Core", langZh),
-            subtitle = T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
+        // 2. 内存限制 — log buffer / polling profile, picked from an anchored dropdown
+        HmDropdownField(
+            label = T("内存限制", "Memory Limit", langZh),
+            options = listOf(
+                HmDropdownOption(
+                    label = T("标准", "Standard", langZh),
+                    value = com.easytier.RuntimeTuning.MEMORY_STANDARD,
+                    hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STANDARD, langZh)
+                ),
+                HmDropdownOption(
+                    label = T("严格", "Strict", langZh),
+                    value = com.easytier.RuntimeTuning.MEMORY_STRICT,
+                    hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STRICT, langZh)
+                ),
+                HmDropdownOption(
+                    label = T("关闭", "Off", langZh),
+                    value = com.easytier.RuntimeTuning.MEMORY_OFF,
+                    hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_OFF, langZh)
+                )
+            ),
+            selectedIndex = when (memoryLevel) {
+                com.easytier.RuntimeTuning.MEMORY_STRICT -> 1
+                com.easytier.RuntimeTuning.MEMORY_OFF -> 2
+                else -> 0
+            },
+            onSelect = { idx ->
+                val level = when (idx) {
+                    1 -> com.easytier.RuntimeTuning.MEMORY_STRICT
+                    2 -> com.easytier.RuntimeTuning.MEMORY_OFF
+                    else -> com.easytier.RuntimeTuning.MEMORY_STANDARD
+                }
+                onConfigChange(config.copy(memoryLimit = level))
+            },
             colors = colors,
-            onClick = onRestartCore
+            hint = memoryLevelHint(memoryLevel, langZh),
+            card = true
         )
 
-        // 3. Log collection toggle (AppLogger.setEnabled)
+        // 3. 日志收集 (AppLogger.setEnabled)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -205,51 +254,25 @@ fun GeneralPage(
             }
         }
 
-        // 4. Power saving — slows the polling/notification cadence in the background
-        //    and injects EasyTier power flags (disable_upnp) into the generated TOML.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔋", fontSize = 20.sp)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        T("省电模式", "Power Saving", langZh),
-                        color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                HmToggle(
-                    label = T("后台降频", "Slow down in background", langZh),
-                    checked = config.powerSaving,
-                    onCheckedChange = { onConfigChange(config.copy(powerSaving = it)) },
-                    hint = T(
-                        "熄屏/后台时状态刷新从 1s 放宽到 60s、通知 60s 一次；同时关闭 EasyTier 的 UPnP 探测。回到前台立即恢复",
-                        "When backgrounded: status every 60s instead of 1s, notification every 60s, UPnP probing off. Restored instantly in foreground",
-                        langZh
-                    ),
-                    colors = colors
-                )
-            }
-        }
-
-        // 5. Memory limit — log buffer / polling profile
+        // 4. 配置服务器
         SettingsNavRow(
-            icon = "▤",
-            title = T("内存限制", "Memory Limit", langZh),
-            subtitle = memoryLevelHint(memoryLevel, langZh),
-            value = memoryLabel,
+            icon = "☁",
+            title = T("配置服务器", "Config Server", langZh),
+            subtitle = T("从远端 URL 一键拉取 TOML 配置", "Fetch TOML config from URL", langZh),
             colors = colors,
-            onClick = { memoryDialogVisible = true }
+            onClick = onConfigServer
         )
 
-        // 6. Permissions entry
+        // 5. 重启核心 — same call chain as the old dashboard restart button
+        SettingsNavRow(
+            icon = "↻",
+            title = T("重启核心", "Restart Core", langZh),
+            subtitle = T("断开并重新拉起 EasyTier 实例", "Tear down and restart the EasyTier core", langZh),
+            colors = colors,
+            onClick = onRestartCore
+        )
+
+        // 6. 权限管理
         SettingsNavRow(
             icon = "🛡",
             title = T("权限管理", "Permissions", langZh),
@@ -258,52 +281,9 @@ fun GeneralPage(
             onClick = onOpenPermissions
         )
     }
-
-    // Memory-limit picker — three levels, each with its own one-line explanation
-    HmChoiceDialog(
-        visible = memoryDialogVisible,
-        title = T("内存限制", "Memory Limit", langZh),
-        options = listOf(
-            HmDialogChoice(
-                label = T("标准", "Standard", langZh),
-                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STANDARD, langZh)
-            ),
-            HmDialogChoice(
-                label = T("严格", "Strict", langZh),
-                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_STRICT, langZh)
-            ),
-            HmDialogChoice(
-                label = T("关闭", "Off", langZh),
-                hint = memoryLevelHint(com.easytier.RuntimeTuning.MEMORY_OFF, langZh)
-            )
-        ),
-        selectedIndex = when (memoryLevel) {
-            com.easytier.RuntimeTuning.MEMORY_STRICT -> 1
-            com.easytier.RuntimeTuning.MEMORY_OFF -> 2
-            else -> 0
-        },
-        cancelLabel = T("取消", "Cancel", langZh),
-        onSelect = { idx ->
-            val level = when (idx) {
-                1 -> com.easytier.RuntimeTuning.MEMORY_STRICT
-                2 -> com.easytier.RuntimeTuning.MEMORY_OFF
-                else -> com.easytier.RuntimeTuning.MEMORY_STANDARD
-            }
-            onConfigChange(config.copy(memoryLimit = level))
-            memoryDialogVisible = false
-        },
-        onDismiss = { memoryDialogVisible = false }
-    )
 }
 
-/** 档位名（行右侧展示）。 */
-private fun memoryLevelLabel(level: String, langZh: Boolean): String = when (level) {
-    com.easytier.RuntimeTuning.MEMORY_STRICT -> T("严格", "Strict", langZh)
-    com.easytier.RuntimeTuning.MEMORY_OFF -> T("关闭", "Off", langZh)
-    else -> T("标准", "Standard", langZh)
-}
-
-/** 档位说明（一行 hint，行副标题与选择弹窗共用）。 */
+/** 档位说明（一行 hint，下拉项的说明也用它）。 */
 private fun memoryLevelHint(level: String, langZh: Boolean): String = when (level) {
     com.easytier.RuntimeTuning.MEMORY_STRICT -> T(
         "日志 30 条 / 6 小时，轮询 2s、通知 10s、日志页 5s",
@@ -353,7 +333,7 @@ fun ThemePage(
         }
     }
 
-    SettingsSubPage(title = T("主题", "Theme", langZh), langZh = langZh, onBack = onBack) {
+    SettingsSubPage(title = T("主题", "Theme", langZh), onBack = onBack) {
         Text(
             T(
                 "选择外观模式；「跟随系统」会随系统的深色/浅色设置自动切换。",
@@ -549,7 +529,7 @@ fun PermissionsPage(langZh: Boolean, onBack: () -> Unit) {
         }
     }
 
-    SettingsSubPage(title = T("权限管理", "Permissions", langZh), langZh = langZh, onBack = onBack) {
+    SettingsSubPage(title = T("权限管理", "Permissions", langZh), onBack = onBack) {
         Text(
             T(
                 "以下权限只在需要时使用，状态实时读取系统；授予后返回本页会自动刷新。",
@@ -837,20 +817,14 @@ fun PrivacyPolicyPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             if (!forced) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.surface)
-                        .border(0.5.dp, colors.surfaceBorder, RoundedCornerShape(12.dp))
-                        .clickable { onBack() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text("← " + T("返回", "Back", langZh), color = colors.accentLight, fontSize = 13.sp)
-                }
+                HmBackGlyph(
+                    onBack = onBack,
+                    colors = colors,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
             }
             Text(
                 T("隐私政策", "Privacy Policy", langZh),

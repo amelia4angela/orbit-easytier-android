@@ -31,9 +31,12 @@ import com.easytier.ui.theme.currentColors
  * 「配置管理器」弹窗（原来是 MainActivity 里的 AlertDialog）。
  *
  * 逻辑与文案保持原样：点列表项 = 切换到该配置（[onSelect] 给的是下标，调用方负责
- * loadConfig 并关闭）；底部三个动作「新建…」「删除」「取消」。外观统一走 [HmDialog]
+ * loadConfig 并关闭）；底部两个动作「删除」「新建…」。外观统一走 [HmDialog]
  * —— 20dp 圆角玻璃卡 + 统一标题 + 统一按钮层级；列表只是换壳，选中项用 √ 标记，
  * 与原 AlertDialog「名字 + ✓」一致。
+ *
+ * 「取消」按钮已去掉：HmDialog 的 Dialog 会把「点空白处 / 返回键」变成 onDismiss，
+ * 少一个按钮更干净。
  */
 @Composable
 fun ConfigManagerDialog(
@@ -101,11 +104,150 @@ fun ConfigManagerDialog(
                 onClick = onNew
             )
         }
-        HmDialogTextButton(
-            text = T("取消", "Cancel", langZh),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onDismiss
+    }
+}
+
+/**
+ * 「确认删除 <name>？」—— 替代原来的「先选要删哪一个」列表。
+ *
+ * 删除对象固定为**当前选中的配置**（由调用方传 name），所以整个流程只剩一个确认框：
+ * 按钮「关闭」+「删除（红）」；点空白处 / 返回键同样取消（HmDialog 的 onDismiss）。
+ * 默认配置不可删的校验放在调用方（[com.easytier.MainActivity.showDeleteConfigDialog]）。
+ */
+@Composable
+fun DeleteConfigConfirmDialog(
+    name: String?,
+    langZh: Boolean,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = currentColors()
+    // 退出动画期间 name 已经变 null，正文还得显示原名字 —— 记住最后一次非空值。
+    var lastShown by remember { mutableStateOf("") }
+    LaunchedEffect(name) { if (name != null) lastShown = name }
+    val display = name ?: lastShown
+
+    HmDialog(
+        visible = name != null,
+        onDismiss = onDismiss,
+        title = T("删除配置", "Delete Config", langZh)
+    ) {
+        Text(
+            text = T("确认删除「$display」？", "Delete \"$display\"?", langZh),
+            color = colors.textSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp
         )
+        Text(
+            text = T(
+                "该配置会从本机配置列表中移除，无法撤回。",
+                "The config file is removed from this device. This cannot be undone.",
+                langZh
+            ),
+            color = colors.textTertiary,
+            fontSize = 11.sp,
+            lineHeight = 15.sp
+        )
+        HmDialogActionRow {
+            HmDialogSecondaryButton(
+                text = T("关闭", "Close", langZh),
+                modifier = Modifier.weight(1f),
+                onClick = onDismiss
+            )
+            HmDialogPrimaryButton(
+                text = T("删除", "Delete", langZh),
+                modifier = Modifier.weight(1f),
+                danger = true,
+                onClick = { if (display.isNotEmpty()) onConfirm(display) }
+            )
+        }
+    }
+}
+
+/**
+ * 「新建配置」—— 替代原来的 AlertDialog + EditText。
+ *
+ * 两层：输入名字（同名时提示会覆盖）→ 覆盖确认。整个流程都在 HmDialog 外壳里，
+ * 与配置管理器 / 删除确认的圆角、玻璃底、按钮层级完全一致。
+ */
+@Composable
+fun NewConfigDialog(
+    visible: Boolean,
+    langZh: Boolean,
+    existingNames: List<String>,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = currentColors()
+    var name by remember { mutableStateOf("") }
+    var askOverwrite by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            name = ""
+            askOverwrite = false
+        }
+    }
+
+    val trimmed = name.trim()
+    val exists = trimmed.isNotEmpty() && existingNames.any { it == trimmed }
+
+    HmDialog(
+        visible = visible,
+        onDismiss = onDismiss,
+        title = if (askOverwrite) {
+            T("覆盖确认", "Overwrite?", langZh)
+        } else {
+            T("新建配置", "New Config", langZh)
+        }
+    ) {
+        if (askOverwrite) {
+            Text(
+                text = T("配置「$trimmed」已存在，覆盖吗？", "Config \"$trimmed\" exists. Overwrite?", langZh),
+                color = colors.textSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+            HmDialogActionRow {
+                HmDialogSecondaryButton(
+                    text = T("返回", "Back", langZh),
+                    modifier = Modifier.weight(1f),
+                    onClick = { askOverwrite = false }
+                )
+                HmDialogPrimaryButton(
+                    text = T("覆盖", "Overwrite", langZh),
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSave(trimmed) }
+                )
+            }
+        } else {
+            HmTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = "",
+                placeholder = T("输入新配置名称", "Enter config name", langZh),
+                colors = colors,
+                hint = if (exists) {
+                    T("已存在同名配置，保存会覆盖", "A config with this name exists; saving overwrites it", langZh)
+                } else null,
+                // 弹窗里永远可编辑（不受运行中锁定影响）
+                enabled = true
+            )
+            HmDialogActionRow {
+                HmDialogSecondaryButton(
+                    text = T("关闭", "Close", langZh),
+                    modifier = Modifier.weight(1f),
+                    onClick = onDismiss
+                )
+                HmDialogPrimaryButton(
+                    text = T("保存", "Save", langZh),
+                    modifier = Modifier.weight(1f),
+                    enabled = trimmed.isNotEmpty(),
+                    onClick = {
+                        if (exists) askOverwrite = true else onSave(trimmed)
+                    }
+                )
+            }
+        }
     }
 }
 

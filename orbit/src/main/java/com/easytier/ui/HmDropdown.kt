@@ -86,7 +86,8 @@ fun HmDropdownField(
     colors: AppColors = currentColors(),
     hint: String? = null,
     card: Boolean = false,
-    fallbackValue: String = ""
+    fallbackValue: String = "",
+    enabled: Boolean = LocalConfigEditable.current
 ) {
     var expanded by remember { mutableStateOf(false) }
     // Popup stays mounted until the exit animation finishes.
@@ -144,7 +145,7 @@ fun HmDropdownField(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable(enabled = enabled) { expanded = !expanded }
                     .padding(
                         horizontal = if (card) 16.dp else 12.dp,
                         vertical = if (card) 16.dp else 10.dp
@@ -179,7 +180,8 @@ fun HmDropdownField(
                 } else {
                     Text(
                         text = currentLabel.ifEmpty { "—" },
-                        color = colors.textPrimary,
+                        color = if (enabled) colors.textPrimary
+                        else colors.textTertiary.copy(alpha = 0.7f),
                         fontSize = 13.sp,
                         maxLines = 1,
                         modifier = Modifier.weight(1f)
@@ -187,7 +189,7 @@ fun HmDropdownField(
                     Spacer(Modifier.width(8.dp))
                 }
                 DropdownTriangle(
-                    color = colors.textTertiary,
+                    color = if (enabled) colors.textTertiary else colors.textTertiary.copy(alpha = 0.5f),
                     angle = triangleAngle
                 )
             }

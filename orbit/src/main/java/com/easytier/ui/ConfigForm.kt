@@ -40,6 +40,15 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import com.easytier.TomlUtils
 import com.easytier.ui.theme.*
 
+/**
+ * 配置表单是否可编辑（运行中 / 启动中为 false）。
+ *
+ * 在表单根节点用 `CompositionLocalProvider(LocalConfigEditable provides …)` 给一次值，
+ * 下面的 [HmTextField] / [HmToggle] / [HmSwitch] / [HmDropdownField] 都把它作为
+ * `enabled` 的默认值 —— 40 多个字段不用逐个传参，也不会漏。
+ */
+val LocalConfigEditable = compositionLocalOf { true }
+
 @Composable
 fun ConfigForm(
     config: ConfigState,
@@ -48,6 +57,9 @@ fun ConfigForm(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
+    // 由 ConfigTab 在表单根节点下发（运行中 = false）。表单里所有输入组件都读这个值，
+    // 不需要在每个调用点重复传 enabled。
+    val editable = LocalConfigEditable.current
     var advancedExpanded by remember { mutableStateOf(false) }
     var secretVisible by remember { mutableStateOf(false) }
 
@@ -100,7 +112,7 @@ fun ConfigForm(
                             .clip(RoundedCornerShape(12.dp))
                             .background(colors.inputBg)
                             .border(0.5.dp, colors.inputBorder, RoundedCornerShape(12.dp))
-                            .clickable { secretVisible = !secretVisible },
+                            .clickable(enabled = editable) { secretVisible = !secretVisible },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(if (secretVisible) "🙈" else "👁", fontSize = 16.sp)
@@ -182,6 +194,7 @@ fun ConfigForm(
                                         }
                                         .background(rowBg)
                                         .clickable(
+                                            enabled = editable,
                                             interactionSource = interaction,
                                             indication = null
                                         ) {
@@ -198,11 +211,11 @@ fun ConfigForm(
                                         maxLines = 1,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    NodeActionButton("✎", colors.textTertiary) {
+                                    NodeActionButton("✎", colors.textTertiary, enabled = editable) {
                                         editingIndex = index
                                         nodeDialogVisible = true
                                     }
-                                    NodeActionButton("🗑", colors.dangerText) {
+                                    NodeActionButton("🗑", colors.dangerText, enabled = editable) {
                                         applyNodes(config.nodes.filterIndexed { i, _ -> i != index })
                                     }
                                 }
@@ -213,7 +226,7 @@ fun ConfigForm(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable {
+                                .clickable(enabled = editable) {
                                     editingIndex = -1
                                     nodeDialogVisible = true
                                 }
@@ -222,7 +235,7 @@ fun ConfigForm(
                         ) {
                             Text(
                                 text = "+ " + T("添加初始节点", "Add Initial Node", langZh),
-                                color = colors.accent,
+                                color = if (editable) colors.accent else colors.textTertiary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -271,7 +284,7 @@ fun ConfigForm(
                     label = T("本地 IP", "Local IP", langZh),
                     placeholder = T("例如 10.0.0.2/24", "e.g. 10.0.0.2/24", langZh),
                     colors = colors,
-                    enabled = !config.dhcp,
+                    enabled = !config.dhcp && editable,
                     hint = if (config.dhcp) {
                         T(
                             "DHCP 已开启，本地 IP 自动获取；关闭 DHCP 后可编辑",
@@ -760,15 +773,20 @@ private fun SectionLabel(text: String, colors: AppColors) {
  * Small square glyph button used for the per-node edit / delete actions.
  */
 @Composable
-private fun NodeActionButton(glyph: String, tint: ComposeColor, onClick: () -> Unit) {
+private fun NodeActionButton(
+    glyph: String,
+    tint: ComposeColor,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .size(32.dp)
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(glyph, color = tint, fontSize = 14.sp)
+        Text(glyph, color = if (enabled) tint else tint.copy(alpha = 0.35f), fontSize = 14.sp)
     }
 }
 
@@ -783,7 +801,7 @@ internal fun HmTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     colors: AppColors,
     hint: String? = null,
-    enabled: Boolean = true
+    enabled: Boolean = LocalConfigEditable.current
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -863,10 +881,15 @@ fun HmSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    colors: AppColors = currentColors()
+    colors: AppColors = currentColors(),
+    enabled: Boolean = LocalConfigEditable.current
 ) {
     val trackColor by animateColorAsState(
-        targetValue = if (checked) colors.accent else colors.inputBg,
+        targetValue = when {
+            !enabled -> colors.inputBg.copy(alpha = 0.6f)
+            checked -> colors.accent
+            else -> colors.inputBg
+        },
         animationSpec = tween(220, easing = HarmonyEasing),
         label = "swTrack"
     )
@@ -880,7 +903,11 @@ fun HmSwitch(
         animationSpec = tween(240, easing = HarmonyEasing),
         label = "swThumb"
     )
-    val thumbColor = if (checked) ComposeColor.White else colors.textTertiary
+    val thumbColor = when {
+        !enabled -> ComposeColor.White.copy(alpha = 0.55f)
+        checked -> ComposeColor.White
+        else -> colors.textTertiary
+    }
     Box(
         modifier = modifier
             .width(50.dp)
@@ -888,7 +915,7 @@ fun HmSwitch(
             .clip(RoundedCornerShape(15.dp))
             .background(trackColor)
             .border(0.5.dp, trackBorder, RoundedCornerShape(15.dp))
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
     ) {
         Box(
             modifier = Modifier
@@ -908,12 +935,13 @@ fun HmToggle(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     colors: AppColors = currentColors(),
-    hint: String? = null
+    hint: String? = null,
+    enabled: Boolean = LocalConfigEditable.current
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -922,13 +950,13 @@ fun HmToggle(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 label,
-                color = colors.textSecondary,
+                color = if (enabled) colors.textSecondary else colors.textTertiary.copy(alpha = 0.7f),
                 fontSize = 13.sp
             )
             if (hint != null) {
                 Text(
                     text = hint,
-                    color = colors.textTertiary,
+                    color = if (enabled) colors.textTertiary else colors.textTertiary.copy(alpha = 0.55f),
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
                     modifier = Modifier.padding(top = 2.dp)
@@ -936,6 +964,11 @@ fun HmToggle(
             }
         }
         Spacer(Modifier.width(10.dp))
-        HmSwitch(checked = checked, onCheckedChange = onCheckedChange, colors = colors)
+        HmSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = colors,
+            enabled = enabled
+        )
     }
 }

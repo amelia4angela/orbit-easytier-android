@@ -41,11 +41,15 @@ class ConfigEditActivity : AppCompatActivity() {
         const val EXTRA_CURRENT_CONFIG = "current_config_name"
         const val EXTRA_CONFIG_NAME = "selected_config_name"
         private const val REQUEST_IMPORT_TOML = 2001
+        /** 导出 .toml：ACTION_CREATE_DOCUMENT 的返回 */
+        private const val REQUEST_EXPORT_TOML = 2002
     }
 
     private var currentConfigName = "default"
     private var langZh = true
     private var isDarkTheme = false
+    /** 待写入的 .toml 内容（SAF 选完位置后才写） */
+    private var pendingExportToml: String? = null
 
     // ── Lifecycle ──
 
@@ -380,24 +384,12 @@ class ConfigEditActivity : AppCompatActivity() {
 
                     Button(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, exportTomlContent)
-                                putExtra(Intent.EXTRA_SUBJECT, "EasyTier Config: $configName")
-                            }
-                            startActivity(Intent.createChooser(intent,
-                                tr("分享配置", "Share config")))
                             showExportSheet = false
+                            onExportToml(configState)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            Icons.Default.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(tr("分享", "Share"))
+                        Text(tr("保存为 .toml 文件", "Save as .toml file"))
                     }
                 }
             }
@@ -490,13 +482,21 @@ class ConfigEditActivity : AppCompatActivity() {
     // ── Import / Export ──
 
     private fun exportToml(state: ConfigState) {
-        val toml = TomlUtils.buildToml(state)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, toml)
-            putExtra(Intent.EXTRA_SUBJECT, "EasyTier Config: $currentConfigName")
+        pendingExportToml = TomlUtils.buildToml(state)
+        try {
+            startActivityForResult(
+                TomlFileExport.createDocumentIntent(TomlFileExport.fileName(currentConfigName)),
+                REQUEST_EXPORT_TOML
+            )
+        } catch (t: Throwable) {
+            pendingExportToml = null
+            AppLogger.e("ConfigEdit", "Cannot launch document picker", t)
+            Toast.makeText(
+                this,
+                tr("无法打开文件保存器: ${t.message}", "Cannot open file picker: ${t.message}"),
+                Toast.LENGTH_LONG
+            ).show()
         }
-        startActivity(Intent.createChooser(intent, tr("分享配置", "Share config")))
     }
 
     private fun importToml() {
@@ -510,6 +510,23 @@ class ConfigEditActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_IMPORT_TOML && resultCode == RESULT_OK && data?.data != null) {
             handleTomlImport(data.data!!)
+            return
+        }
+        if (requestCode == REQUEST_EXPORT_TOML) {
+            val toml = pendingExportToml
+            pendingExportToml = null
+            val uri = data?.data
+            if (resultCode == RESULT_OK && uri != null && toml != null) {
+                val err = TomlFileExport.write(this, uri, toml)
+                if (err == null) {
+                    AppLogger.i("ConfigEdit", "Config exported: $uri")
+                    Toast.makeText(this, tr("已导出 .toml 文件", ".toml file exported"),
+                        Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, tr("导出失败: $err", "Export failed: $err"),
+                        Toast.LENGTH_LONG).show()
+                }
+            }
             return
         }
         super.onActivityResult(requestCode, resultCode, data)

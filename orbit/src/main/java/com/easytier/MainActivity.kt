@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.OpenableColumns
-import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -73,6 +72,8 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_THEME = "easytier_theme"
         private const val REQUEST_IMPORT_TOML = 1001
         private const val REQUEST_EDIT_CONFIG = 1003
+        /** 导出 .toml：ACTION_CREATE_DOCUMENT 的返回 */
+        private const val REQUEST_EXPORT_TOML = 1004
         private const val REQUEST_STORAGE = 2000
         private const val REQUEST_NOTIFICATION = 2001
 
@@ -118,6 +119,14 @@ class MainActivity : ComponentActivity() {
     private var configManagerNames by mutableStateOf<List<String>?>(null)
     /** 配置服务器弹窗（Compose 版） */
     private var configServerVisible by mutableStateOf(false)
+    /** 新建配置弹窗（Compose HmDialog 版，替代 AlertDialog + EditText） */
+    private var newConfigVisible by mutableStateOf(false)
+    /** 打开新建弹窗时快照的配置名列表（用于同名覆盖提示；不在 Compose 里每次都读磁盘） */
+    private var newConfigExistingNames by mutableStateOf<List<String>>(emptyList())
+    /** 删除确认弹窗：非 null 表示「要删这个配置」，只删当前选中的那个 */
+    private var deleteConfirmName by mutableStateOf<String?>(null)
+    /** 待写入的 .toml 内容（SAF 选完位置后才写） */
+    private var pendingExportToml by mutableStateOf<String?>(null)
     private var peerInfoExpanded by mutableStateOf(false)
     private var currentConfigName by mutableStateOf("default")
     private var configChanged by mutableStateOf(false)   // tracks unsaved changes
@@ -331,6 +340,29 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { configManagerNames = null }
                     )
                 }
+
+                // 删除确认（只针对当前配置）+ 新建配置：都是 HmDialog 外观，
+                // 点空白处 / 返回键即取消。
+                DeleteConfigConfirmDialog(
+                    name = deleteConfirmName,
+                    langZh = langZh,
+                    onConfirm = { name ->
+                        deleteConfirmName = null
+                        deleteConfig(name)
+                    },
+                    onDismiss = { deleteConfirmName = null }
+                )
+
+                NewConfigDialog(
+                    visible = newConfigVisible,
+                    langZh = langZh,
+                    existingNames = newConfigExistingNames,
+                    onSave = { name ->
+                        newConfigVisible = false
+                        saveConfig(name)
+                    },
+                    onDismiss = { newConfigVisible = false }
+                )
 
                 ConfigServerDialog(
                     visible = configServerVisible,
@@ -933,60 +965,30 @@ class MainActivity : ComponentActivity() {
         }
 
         // 外观统一走 Compose 的 ConfigManagerDialog（HmDialog 外壳），逻辑不变：
-        // 列表点选 = 切换配置，底部「新建…」「删除」「取消」。
+        // 列表点选 = 切换配置，底部「新建…」「删除」；点空白处关闭（没有取消按钮）。
         configManagerNames = names
     }
 
+    /**
+     * 删除：不再弹「选择要删哪个」，只对**当前选中的配置**弹一次确认。
+     * 确认框本身是 Compose 的 DeleteConfigConfirmDialog（HmDialog 外观），
+     * 状态挂在 deleteConfirmName 上。
+     */
     private fun showDeleteConfigDialog() {
-        val names = listConfigFiles()
-        if (names.isEmpty()) return
-        AlertDialog.Builder(this)
-            .setTitle(tr("选择要删除的配置", "Select config to delete"))
-            .setItems(names.toTypedArray()) { _, which ->
-                val name = names[which]
-                if (name == currentConfigName && currentConfigName == "default") {
-                    Toast.makeText(this, tr("默认配置不可删除", "Cannot delete default"),
-                        Toast.LENGTH_SHORT).show()
-                    return@setItems
-                }
-                AlertDialog.Builder(this)
-                    .setTitle(tr("确认删除", "Confirm delete"))
-                    .setMessage(tr("确定删除「$name」？", "Delete '$name'?"))
-                    .setPositiveButton(tr("删除", "Delete")) { _, _ -> deleteConfig(name) }
-                    .setNegativeButton(tr("取消", "Cancel"), null)
-                    .show()
-            }.setPositiveButton(tr("取消", "Cancel"), null).show()
+        val name = currentConfigName
+        if (name.isBlank()) return
+        if (name == "default") {
+            Toast.makeText(this, tr("默认配置不可删除", "Cannot delete default"),
+                Toast.LENGTH_SHORT).show()
+            return
+        }
+        deleteConfirmName = name
     }
 
+    /** 新建配置：Compose 的 NewConfigDialog（输入名字 → 同名再确认覆盖）。 */
     private fun promptSaveAs() {
-        val input = EditText(this)
-        input.setSingleLine(true)
-        input.hint = tr("输入新配置名称", "Enter config name")
-
-        val existingNames = listConfigFiles()
-        AlertDialog.Builder(this)
-            .setTitle(tr("保存为新配置", "Save New Config"))
-            .setView(input)
-            .setPositiveButton(tr("保存", "Save")) { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isEmpty()) {
-                    Toast.makeText(this, tr("名称不能为空", "Name cannot be empty"),
-                        Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                if (name in existingNames) {
-                    AlertDialog.Builder(this)
-                        .setTitle(tr("覆盖确认", "Overwrite?"))
-                        .setMessage(tr("配置「$name」已存在，覆盖吗？", "Config '$name' exists. Overwrite?"))
-                        .setPositiveButton(tr("覆盖", "Overwrite")) { _, _ -> saveConfig(name) }
-                        .setNegativeButton(tr("取消", "Cancel"), null)
-                        .show()
-                } else {
-                    saveConfig(name)
-                }
-            }
-            .setNegativeButton(tr("取消", "Cancel"), null)
-            .show()
+        newConfigExistingNames = listConfigFiles()
+        newConfigVisible = true
     }
 
     /** Auto-save the current config with its existing name (no prompt) */
@@ -998,13 +1000,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 导出配置 → 真正的 .toml 文件（SAF，ACTION_CREATE_DOCUMENT）。
+     *
+     * 之前是 ACTION_SEND 把 TOML 文本当正文分享；现在先把内容存进 pendingExportToml，
+     * 用户在系统文件器里选好位置后，onActivityResult 里写到返回的 uri。
+     */
     private fun exportConfigAsToml() {
-        val toml = TomlUtils.buildToml(configState)
-        Intent(Intent.ACTION_SEND).also { intent ->
-            intent.type = "text/plain"
-            intent.putExtra(Intent.EXTRA_TEXT, toml)
-            intent.putExtra(Intent.EXTRA_SUBJECT, "Orbit Config: $currentConfigName")
-            startActivity(Intent.createChooser(intent, tr("分享配置", "Share config")))
+        pendingExportToml = TomlUtils.buildToml(configState)
+        val fileName = TomlFileExport.fileName(currentConfigName)
+        try {
+            startActivityForResult(
+                TomlFileExport.createDocumentIntent(fileName),
+                REQUEST_EXPORT_TOML
+            )
+        } catch (t: Throwable) {
+            pendingExportToml = null
+            AppLogger.e("MainActivity", "Cannot launch document picker", t)
+            Toast.makeText(
+                this,
+                tr("无法打开文件保存器: ${t.message}", "Cannot open file picker: ${t.message}"),
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -1602,6 +1619,30 @@ class MainActivity : ComponentActivity() {
 
         if (requestCode == REQUEST_IMPORT_TOML && resultCode == RESULT_OK && data?.data != null) {
             handleTomlImport(data.data!!)
+            return
+        }
+
+        if (requestCode == REQUEST_EXPORT_TOML) {
+            val toml = pendingExportToml
+            pendingExportToml = null
+            val uri = data?.data
+            if (resultCode == RESULT_OK && uri != null && toml != null) {
+                val err = TomlFileExport.write(this, uri, toml)
+                if (err == null) {
+                    AppLogger.i("MainActivity", "Config exported: $uri")
+                    Toast.makeText(
+                        this,
+                        tr("已导出 .toml 文件", ".toml file exported"),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this,
+                        tr("导出失败: $err", "Export failed: $err"),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
             return
         }
 

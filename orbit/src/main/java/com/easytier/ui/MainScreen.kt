@@ -272,6 +272,7 @@ fun MainScreen(
                         onConfigChange = onConfigChange,
                         currentConfigName = currentConfigName,
                         langZh = langZh,
+                        connectionStatus = connectionState.status,
                         onConfigNameClick = onConfigNameClick,
                         onSaveConfig = onSaveConfig,
                         onAutoSaveConfig = onAutoSaveConfig,
@@ -283,7 +284,8 @@ fun MainScreen(
                         onApplyConfig = {
                             onToggleConnection()
                             currentTab = Tab.STATUS
-                        }
+                        },
+                        onStopService = onToggleConnection
                     )
                     Tab.MORE -> MoreTab(
                         langZh = langZh,
@@ -686,6 +688,7 @@ private fun ConfigTab(
     onConfigChange: (ConfigState) -> Unit,
     currentConfigName: String,
     langZh: Boolean,
+    connectionStatus: ConnectionStatus,
     onConfigNameClick: () -> Unit,
     onSaveConfig: () -> Unit,
     onAutoSaveConfig: () -> Unit,
@@ -694,12 +697,20 @@ private fun ConfigTab(
     onExportToml: () -> Unit,
     onDeleteConfig: () -> Unit,
     onLaunchConfigEditor: () -> Unit,
-    onApplyConfig: () -> Unit
+    onApplyConfig: () -> Unit,
+    onStopService: () -> Unit
 ) {
     val colors = currentColors()
     val scrollState = rememberScrollState()
     var hasUnsaved by remember { mutableStateOf(false) }
     var lastConfig by remember { mutableStateOf(config) }
+
+    // 运行中 / 启动中：配置字段全部锁定。NO_TUN 也是「内核在跑、只是没建 TUN」，
+    // 同样属于运行态，一起锁。
+    val running = connectionStatus == ConnectionStatus.RUNNING ||
+            connectionStatus == ConnectionStatus.NO_TUN
+    val starting = connectionStatus == ConnectionStatus.STARTING
+    val locked = running || starting
 
     // ⏱ Debounced auto-save: when config text fields change, wait 3s idle then auto-save
     LaunchedEffect(config) {
@@ -719,6 +730,12 @@ private fun ConfigTab(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+        // ── 运行中提示（锁定时才出现）──
+        if (locked) {
+            RunningIndicator(running = running, langZh = langZh)
+            Spacer(Modifier.height(2.dp))
+        }
+
         // ── Config Management Bar ──
         Box(
             modifier = Modifier
@@ -738,7 +755,7 @@ private fun ConfigTab(
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(colors.inputBg)
-                            .clickable { onConfigNameClick() }
+                            .clickable(enabled = !locked) { onConfigNameClick() }
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Row(
@@ -749,7 +766,7 @@ private fun ConfigTab(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 currentConfigName,
-                                color = colors.textPrimary,
+                                color = if (locked) colors.textSecondary else colors.textPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -763,7 +780,9 @@ private fun ConfigTab(
                                 )
                                 Spacer(Modifier.width(6.dp))
                             }
-                            Text("▼", color = colors.textTertiary, fontSize = 10.sp)
+                            if (!locked) {
+                                Text("▼", color = colors.textTertiary, fontSize = 10.sp)
+                            }
                         }
                     }
                 }
@@ -778,12 +797,14 @@ private fun ConfigTab(
                         onClick = onSaveConfig,
                         colors = colors,
                         accent = true,
+                        enabled = !locked,
                         modifier = Modifier.weight(1f)
                     )
                     ActionBtn(
                         text = T("📥 导入", "📥 Import", langZh),
                         onClick = onImportToml,
                         colors = colors,
+                        enabled = !locked,
                         modifier = Modifier.weight(1f)
                     )
                     ActionBtn(
@@ -803,12 +824,14 @@ private fun ConfigTab(
                         text = T("📋 管理", "📋 Manage", langZh),
                         onClick = onManageConfigs,
                         colors = colors,
+                        enabled = !locked,
                         modifier = Modifier.weight(1f)
                     )
                     ActionBtn(
                         text = T("✏️ 编辑器", "✏️ Editor", langZh),
                         onClick = onLaunchConfigEditor,
                         colors = colors,
+                        enabled = !locked,
                         modifier = Modifier.weight(1f)
                     )
                     ActionBtn(
@@ -816,36 +839,51 @@ private fun ConfigTab(
                         onClick = onDeleteConfig,
                         colors = colors,
                         danger = true,
+                        enabled = !locked,
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        // ── Config Form ──
-        ConfigForm(
-            config = config,
-            langZh = langZh,
-            onConfigChange = onConfigChange
-        )
+        // ── Config Form（运行中整体只读：CompositionLocal 一处下发）──
+        CompositionLocalProvider(LocalConfigEditable provides !locked) {
+            ConfigForm(
+                config = config,
+                langZh = langZh,
+                onConfigChange = onConfigChange
+            )
+        }
 
-        // ── Apply Button ──
+        // ── Apply / Stop Button ──
+        // 运行中只剩「停止服务」可用（配置字段锁死，但必须能停）。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(colors.accentGradient)
+                .then(
+                    if (locked) Modifier.background(colors.dangerBg)
+                    else Modifier.background(colors.accentGradient)
+                )
                 .clickable {
-                    // Save before applying
-                    onAutoSaveConfig()
-                    onApplyConfig()
+                    if (locked) {
+                        onStopService()
+                    } else {
+                        // Save before applying
+                        onAutoSaveConfig()
+                        onApplyConfig()
+                    }
                 }
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "▸ ${T("应用并启动", "Apply & Start", langZh)}",
-                color = Color.White,
+                text = if (locked) {
+                    "■ ${T("停止服务", "Stop Service", langZh)}"
+                } else {
+                    "▸ ${T("应用并启动", "Apply & Start", langZh)}"
+                },
+                color = if (locked) colors.dangerText else Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -863,15 +901,19 @@ private fun ActionBtn(
     colors: AppColors,
     modifier: Modifier = Modifier,
     accent: Boolean = false,
-    danger: Boolean = false
+    danger: Boolean = false,
+    enabled: Boolean = true
 ) {
     val textColor = when {
+        !enabled -> (if (accent) Color.White else colors.textTertiary).copy(alpha = 0.6f)
         accent -> Color.White
         danger -> colors.dangerText
         else -> colors.textSecondary
     }
     val bgMod = when {
+        !enabled && accent -> Modifier.background(colors.accent.copy(alpha = 0.35f))
         accent -> Modifier.background(colors.accentGradient)
+        !enabled -> Modifier.background(colors.inputBg)
         danger -> Modifier.background(colors.dangerBg)
         else -> Modifier.background(colors.inputBg)
     }
@@ -879,7 +921,7 @@ private fun ActionBtn(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .then(bgMod)
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 6.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {

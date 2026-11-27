@@ -120,17 +120,21 @@ fun HmDialogActionRow(content: @Composable RowScope.() -> Unit) {
     )
 }
 
-/** 主按钮：accent 实心，圆角 12，白字 13sp SemiBold。 */
+/** 主按钮：accent 实心，圆角 12，白字 13sp SemiBold；[danger] = 危险操作（红底）。 */
 @Composable
 fun HmDialogPrimaryButton(
     text: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    danger: Boolean = false,
     onClick: () -> Unit
 ) {
     val colors = currentColors()
-    val container = if (enabled) colors.accentGradient
-    else androidx.compose.ui.graphics.SolidColor(colors.accent.copy(alpha = 0.35f))
+    val container: androidx.compose.ui.graphics.Brush = when {
+        !enabled -> androidx.compose.ui.graphics.SolidColor(colors.accent.copy(alpha = 0.35f))
+        danger -> androidx.compose.ui.graphics.SolidColor(colors.dangerText)
+        else -> colors.accentGradient
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))

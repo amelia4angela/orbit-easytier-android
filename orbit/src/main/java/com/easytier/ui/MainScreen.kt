@@ -292,8 +292,7 @@ fun MainScreen(
                         onToggleConnection = onToggleConnection,
                         myNodeItem = myNodeItem,
                         peerItems = peerItems,
-                        langZh = langZh,
-                        connectionStartTime = connectionStartTime
+                        langZh = langZh
                     )
                     Tab.CONFIG -> ConfigTab(
                         config = config,
@@ -654,56 +653,30 @@ private fun StatusTab(
     onToggleConnection: () -> Unit,
     myNodeItem: PeerInfoItem?,
     peerItems: List<PeerInfoItem>,
-    langZh: Boolean,
-    connectionStartTime: Long = 0L
+    langZh: Boolean
 ) {
     val scrollState = rememberScrollState()
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
                       connectionState.status == ConnectionStatus.NO_TUN
 
-    // ── Uptime ticker ──
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(connectionStartTime, isConnected) {
-        while (isConnected && connectionStartTime > 0L) {
-            now = System.currentTimeMillis()
-            delay(1000L)
-        }
-    }
-    val uptime = if (isConnected && connectionStartTime > 0L) {
-        val sec = (now - connectionStartTime) / 1000
-        "%02d:%02d:%02d".format(sec / 3600, (sec % 3600) / 60, sec % 60)
-    } else ""
-
-    // ── Speed history for sparkline (sample on change, keep 40 pts) ──
-    val speedHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
+    // ── Speed history for the waveforms (one list per direction, 40 pts) ──
+    val rxHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
+    val txHistory = remember { androidx.compose.runtime.mutableStateListOf<Float>() }
     val rxSpeed = myNodeItem?.rxSpeed ?: ""
+    val txSpeed = myNodeItem?.txSpeed ?: ""
 
-    // Public egress IP — fetched while connected (ipify → ip-api → ipip fallbacks)
-    var publicIp by remember { mutableStateOf("") }
-    LaunchedEffect(isConnected) {
-        if (!isConnected) { publicIp = ""; return@LaunchedEffect }
-        publicIp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val endpoints = listOf(
-                "https://api.ipify.org",
-                "http://ip-api.com/line?fields=query",
-                "https://myip.ipip.net"
-            )
-            endpoints.firstNotNullOfOrNull { url ->
-                try {
-                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 6000; conn.readTimeout = 6000
-                    val body = conn.inputStream.bufferedReader().readText().trim()
-                    conn.disconnect()
-                    body.lineSequence().firstOrNull()?.trim()?.takeIf { it.matches(Regex("[0-9a-fA-F:.]+")) }
-                } catch (_: Exception) { null }
-            } ?: ""
-        }
-    }
     LaunchedEffect(rxSpeed) {
         val v = parseSpeedValue(rxSpeed)
         if (v > 0f) {
-            speedHistory.add(v)
-            if (speedHistory.size > 40) speedHistory.removeAt(0)
+            rxHistory.add(v)
+            if (rxHistory.size > 40) rxHistory.removeAt(0)
+        }
+    }
+    LaunchedEffect(txSpeed) {
+        val v = parseSpeedValue(txSpeed)
+        if (v > 0f) {
+            txHistory.add(v)
+            if (txHistory.size > 40) txHistory.removeAt(0)
         }
     }
 
@@ -715,7 +688,6 @@ private fun StatusTab(
         return "%.1f %s".format(v, units[i])
     }
 
-    val peerCount = (if (myNodeItem != null) 1 else 0) + peerItems.size
     val latency = myNodeItem?.let {
         if (it.latencyUs > 0) "${it.latencyUs / 1000} ms" else ""
     } ?: ""
@@ -733,21 +705,21 @@ private fun StatusTab(
                 onClick = onToggleConnection,
                 nodeLabel = myNodeItem?.ip ?: connectionState.subLabel,
                 nodeSub = myNodeItem?.let { "${it.hostname}  ·  ${it.protocol}" } ?: "",
-                uptime = uptime,
-                peerCount = peerCount,
+                rxSpeed = rxSpeed,
+                txSpeed = txSpeed,
                 latency = latency,
-                langZh = langZh,
-                publicIp = publicIp
+                langZh = langZh
             )
 
             // ── Speed cards (only when running) ──
             if (isConnected && myNodeItem != null) {
                 SpeedStatRow(
                     rxSpeed = rxSpeed,
-                    txSpeed = myNodeItem.txSpeed,
+                    txSpeed = txSpeed,
                     rxTotal = fmtBytes(myNodeItem.rxBytes),
                     txTotal = fmtBytes(myNodeItem.txBytes),
-                    history = speedHistory,
+                    rxHistory = rxHistory,
+                    txHistory = txHistory,
                     langZh = langZh
                 )
             }
@@ -1148,8 +1120,8 @@ private fun MoreTab(
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("◇", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
+                SettingsRowIcon("◇")
+                Spacer(Modifier.width(SettingsIconGap))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         T("关于 Orbit", "About Orbit", langZh),
@@ -1165,6 +1137,38 @@ private fun MoreTab(
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * 设置列表统一的图标位：24dp 固定宽度的居中容器 + 12dp 间距。
+ *
+ * 为什么不用裸 Text(icon) 直接排：emoji / 符号的字形宽度各不相同（☁ 窄、🔋 宽、
+ * 🛡 带变体选择符），裸 Text 会让每行图标宽度不一，右侧文字列随之错位。固定
+ * 24dp 后所有行的 title / label 都从同一个 x 开始。
+ */
+val SettingsIconBoxSize = 24.dp
+val SettingsIconGap = 12.dp
+
+@Composable
+fun SettingsRowIcon(
+    icon: String?,
+    color: Color = Color.Unspecified
+) {
+    Box(
+        modifier = Modifier.size(SettingsIconBoxSize),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!icon.isNullOrEmpty()) {
+            Text(
+                text = icon,
+                color = color,
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
 }
 
@@ -1192,8 +1196,8 @@ fun SettingsNavRow(
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 20.sp)
-            Spacer(Modifier.width(12.dp))
+            SettingsRowIcon(icon)
+            Spacer(Modifier.width(SettingsIconGap))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,

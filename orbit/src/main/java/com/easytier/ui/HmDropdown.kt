@@ -154,20 +154,15 @@ fun HmDropdownField(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (card) {
-                    if (icon != null) {
-                        Text(
-                            text = icon,
-                            color = if (enabled) colors.textSecondary else colors.textTertiary.copy(alpha = 0.7f),
-                            fontSize = 20.sp
-                        )
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            // align with SettingsNavRow titles (icon 20dp + 12dp gap)
-                            .padding(start = 32.dp)
-                    ) {
+                    // Same 24dp + 12dp icon slot as SettingsNavRow so the label
+                    // column starts at the exact same x in every settings row.
+                    SettingsRowIcon(
+                        icon = icon,
+                        color = if (enabled) colors.textSecondary
+                        else colors.textTertiary.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.width(SettingsIconGap))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
                             color = colors.textPrimary,

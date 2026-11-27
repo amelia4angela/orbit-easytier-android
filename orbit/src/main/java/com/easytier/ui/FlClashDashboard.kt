@@ -27,9 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.Lan
-import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -50,8 +47,10 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -220,7 +219,7 @@ fun StatusGear(
 /**
  * FlClash Status card: status gear + pill + big IP/hostname + sub info on the
  * left, organic blob connect button on the right, and a translucent stat strip
- * (down / up / peers / uptime) pinned to the bottom.
+ * (down / up) pinned to the bottom.
  *
  * The whole card is painted with a status-coloured top-left → bottom-right
  * gradient (green while starting, blue while running, red on error, neutral
@@ -233,12 +232,11 @@ fun FlClashStatusCard(
     onClick: () -> Unit,
     nodeLabel: String,
     nodeSub: String,
-    uptime: String,
-    peerCount: Int,
+    rxSpeed: String,
+    txSpeed: String,
     latency: String,
     modifier: Modifier = Modifier,
-    langZh: Boolean = true,
-    publicIp: String = ""
+    langZh: Boolean = true
 ) {
     val colors = currentColors()
     val isDark = LocalIsDarkTheme.current
@@ -417,7 +415,7 @@ fun FlClashStatusCard(
 
         Spacer(Modifier.height(14.dp))
 
-        // ── Stat strip: down / up / peers / uptime in a translucent dark block ──
+        // ── Stat strip: down / up in a translucent dark block ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -431,25 +429,17 @@ fun FlClashStatusCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             CardStatItem(
-                icon = Icons.Rounded.Public,
-                label = T("外网 IP", "Public IP", langZh),
-                value = publicIp.ifEmpty { "—" },
-                accent = statusBase,
-                colors = colors,
-                modifier = Modifier.weight(1.5f)
-            )
-            CardStatItem(
-                icon = Icons.Rounded.Lan,
-                label = T("节点", "Peers", langZh),
-                value = "$peerCount",
+                icon = Icons.Rounded.ArrowDownward,
+                label = T("下载", "Download", langZh),
+                value = rxSpeed.ifEmpty { "—" },
                 accent = statusBase,
                 colors = colors,
                 modifier = Modifier.weight(1f)
             )
             CardStatItem(
-                icon = Icons.Rounded.Schedule,
-                label = T("时长", "Uptime", langZh),
-                value = uptime.ifEmpty { "—" },
+                icon = Icons.Rounded.ArrowUpward,
+                label = T("上传", "Upload", langZh),
+                value = txSpeed.ifEmpty { "—" },
                 accent = statusBase,
                 colors = colors,
                 modifier = Modifier.weight(1f)
@@ -500,8 +490,9 @@ private fun CardStatItem(
 }
 
 /**
- * Two side-by-side speed cards (up / down) with blue sparkline,
- * mirroring FlClash's "Network speed" section.
+ * Two side-by-side speed cards (up / down), mirroring FlClash's "Network
+ * speed" section: running total on top, a waveform of the recent samples in
+ * the middle, current speed underneath.
  */
 @Composable
 fun SpeedStatRow(
@@ -509,7 +500,8 @@ fun SpeedStatRow(
     txSpeed: String,
     rxTotal: String,
     txTotal: String,
-    history: List<Float>,
+    rxHistory: List<Float>,
+    txHistory: List<Float>,
     modifier: Modifier = Modifier,
     langZh: Boolean = true
 ) {
@@ -518,103 +510,170 @@ fun SpeedStatRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SpeedStatCard(
-            title = T("上传", "Upload", langZh),
-            icon = "↑",
-            speed = txSpeed,
+        SpeedWaveCard(
+            label = T("总上传", "Total Up", langZh),
             total = txTotal,
-            history = history.map { -it },
+            speed = txSpeed,
+            history = txHistory,
+            waveColor = colors.statusGood,
             colors = colors,
             modifier = Modifier.weight(1f)
         )
-        SpeedStatCard(
-            title = T("下载", "Download", langZh),
-            icon = "↓",
-            speed = rxSpeed,
+        SpeedWaveCard(
+            label = T("总下载", "Total Down", langZh),
             total = rxTotal,
-            history = history,
+            speed = rxSpeed,
+            history = rxHistory,
+            waveColor = colors.accent,
             colors = colors,
             modifier = Modifier.weight(1f)
         )
     }
 }
 
+/** Smoothed line + area fill for one waveform sample list, in pixels. */
+private class WavePaths(val line: Path, val fill: Path)
+
+/**
+ * Build the waveform paths once per (samples, canvas size): the Canvas draw
+ * block then only replays them, so a speed-text tick never re-tessellates the
+ * curve. Null when there is nothing worth drawing (< 2 samples).
+ *
+ * x is spread evenly over the width; y maps value/max into the top 92% of the
+ * canvas (bottom 8% stays as headroom). Segments are joined with horizontal
+ * control points, which smooths the curve without overshooting the data range.
+ */
+private fun buildWavePaths(samples: List<Float>, w: Float, h: Float): WavePaths? {
+    if (samples.size < 2 || w <= 0f || h <= 0f) return null
+    val maxV = samples.maxOf { kotlin.math.abs(it) }.coerceAtLeast(1e-6f)
+    val top = h * 0.08f
+    val usable = h - top
+    val stepX = w / (samples.size - 1)
+    fun px(i: Int) = i * stepX
+    fun py(i: Int) = h - (kotlin.math.abs(samples[i]) / maxV).coerceIn(0f, 1f) * usable
+
+    val line = Path().apply {
+        moveTo(px(0), py(0))
+        for (i in 1 until samples.size) {
+            val x0 = px(i - 1)
+            val y0 = py(i - 1)
+            val x1 = px(i)
+            val y1 = py(i)
+            val dx = (x1 - x0) * 0.45f
+            cubicTo(x0 + dx, y0, x1 - dx, y1, x1, y1)
+        }
+    }
+    val fill = Path().apply {
+        addPath(line)
+        lineTo(w, h)
+        lineTo(0f, h)
+        close()
+    }
+    return WavePaths(line, fill)
+}
+
 @Composable
-private fun SpeedStatCard(
-    title: String,
-    icon: String,
-    speed: String,
+private fun SpeedWaveCard(
+    label: String,
     total: String,
+    speed: String,
     history: List<Float>,
+    waveColor: Color,
     colors: com.easytier.ui.theme.AppColors,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    // Snapshot keyed by content: remember() compares List<Float> by equality, so
+    // the path is rebuilt only when a sample (or the canvas size) really changes.
+    val samples = history.toList()
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val wave = remember(samples, canvasSize) {
+        buildWavePaths(samples, canvasSize.width.toFloat(), canvasSize.height.toFloat())
+    }
+
+    Column(
         modifier = modifier
             .flGlassCard(colors, 16.dp)
             .padding(12.dp)
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.accent.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(icon, color = colors.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(title, color = colors.textTertiary, fontSize = 11.sp)
+        // ── Total transferred ──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, color = colors.textTertiary, fontSize = 11.sp, maxLines = 1)
+            Text(
+                total,
+                color = colors.textSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        // ── Waveform ──
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .onSizeChanged { canvasSize = it }
+        ) {
+            // Very light baseline keeps an empty chart reading as a chart.
+            drawLine(
+                color = colors.surfaceBorder.copy(alpha = 0.55f),
+                start = Offset(0f, size.height - 0.5f),
+                end = Offset(size.width, size.height - 0.5f),
+                strokeWidth = 1.dp.toPx()
+            )
+            if (wave != null) {
+                drawPath(
+                    wave.fill,
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            waveColor.copy(alpha = 0.30f),
+                            waveColor.copy(alpha = 0.02f)
+                        ),
+                        startY = 0f,
+                        endY = size.height
+                    )
+                )
+                drawPath(
+                    wave.line,
+                    waveColor,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+            } else {
+                // No samples yet: one flat, faint line through the middle.
+                drawLine(
+                    color = waveColor.copy(alpha = 0.35f),
+                    start = Offset(0f, size.height * 0.5f),
+                    end = Offset(size.width, size.height * 0.5f),
+                    strokeWidth = 1.5.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
             }
-            Spacer(Modifier.height(6.dp))
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        // ── Current speed ──
+        Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 speed.ifEmpty { "—" },
                 color = colors.textPrimary,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1
             )
-            Text(
-                total,
-                color = colors.textTertiary,
-                fontSize = 10.sp,
-                maxLines = 1
-            )
-            // Sparkline
-            if (history.size >= 2) {
-                Spacer(Modifier.height(6.dp))
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(26.dp)
-                ) {
-                    val maxV = history.maxOf { kotlin.math.abs(it) }.coerceAtLeast(1e-6f)
-                    val stepX = size.width / (history.size - 1)
-                    val path = Path()
-                    val fill = Path()
-                    history.forEachIndexed { i, v ->
-                        val x = i * stepX
-                        val y = size.height * (1f - (kotlin.math.abs(v) / maxV) * 0.9f) - 1.dp.toPx()
-                        if (i == 0) {
-                            path.moveTo(x, y)
-                            fill.moveTo(x, size.height)
-                            fill.lineTo(x, y)
-                        } else {
-                            path.lineTo(x, y)
-                            fill.lineTo(x, y)
-                        }
-                    }
-                    fill.lineTo(size.width, size.height)
-                    fill.close()
-                    drawPath(fill, colors.accent.copy(alpha = 0.12f))
-                    drawPath(
-                        path,
-                        colors.accent,
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
+            if (speed.isNotEmpty()) {
+                Text(
+                    "/s",
+                    color = colors.textTertiary,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(start = 1.dp, bottom = 3.dp)
+                )
             }
         }
     }

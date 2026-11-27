@@ -158,8 +158,8 @@ fun GeneralPage(
         ) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔋", fontSize = 20.sp)
-                    Spacer(Modifier.width(12.dp))
+                    SettingsRowIcon("🔋")
+                    Spacer(Modifier.width(SettingsIconGap))
                     Text(
                         T("省电模式", "Power Saving", langZh),
                         color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
@@ -183,6 +183,7 @@ fun GeneralPage(
         // 2. 内存限制 — log buffer / polling profile, picked from an anchored dropdown
         HmDropdownField(
             label = T("内存限制", "Memory Limit", langZh),
+            icon = "💾",
             options = listOf(
                 HmDropdownOption(
                     label = T("标准", "Standard", langZh),
@@ -236,8 +237,8 @@ fun GeneralPage(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("≡", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
+                SettingsRowIcon("≡")
+                Spacer(Modifier.width(SettingsIconGap))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         T("日志收集", "Log Collection", langZh),
@@ -275,8 +276,8 @@ fun GeneralPage(
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("↻", fontSize = 20.sp)
-                Spacer(Modifier.width(12.dp))
+                SettingsRowIcon("↻")
+                Spacer(Modifier.width(SettingsIconGap))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         T("重启核心", "Restart Core", langZh),

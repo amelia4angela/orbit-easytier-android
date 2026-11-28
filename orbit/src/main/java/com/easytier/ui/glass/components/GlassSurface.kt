@@ -29,6 +29,7 @@ import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.GlassSpace
+import com.easytier.ui.glass.LocalGlassBoost
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.effects.GlassBackdropSlice
 import com.easytier.ui.glass.effects.GlassShaderSpec
@@ -110,7 +111,9 @@ fun GlassSurface(
     refraction: GlassShaderSpec = LocalGlassRefraction.current,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val blurDp = blurRadius ?: level.backdropBlur.dp
+    val blurDp = blurRadius ?: (
+        level.backdropBlur * if (LocalGlassBoost.current > 1.01f) 1.25f else 1f
+        ).dp
 
     Box(modifier = modifier) {
         GlassBackdropSlice(

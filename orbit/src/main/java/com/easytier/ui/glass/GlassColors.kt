@@ -146,6 +146,16 @@ data class GlassColors(
  */
 val LocalGlassColors = staticCompositionLocalOf<GlassColors?> { null }
 
+/**
+ * 背景「花色」系数：1f = 主题渐变（原样），>1f = 图片背景。
+ *
+ * 图片背景的色彩不可控，纯靠 22% 白的玻璃填充压不住，白字会掉进亮部。MainScreen 在
+ * 在线图片模式下提供 1.55f：`glassSurface` 的填充 α 按它放大、`GlassSurface` 的背景模糊
+ * 半径也按它上调，保证底栏/顶栏在照片上仍然是「看得出来的玻璃」而且文字可读。
+ * 只在 MainScreen 子树里提供，不影响 GlassShowcase 的调试基准。
+ */
+val LocalGlassBoost = staticCompositionLocalOf { 1f }
+
 /** Current glass palette — theme-provided, or derived from [currentColors] as a fallback. */
 @Composable
 fun glassColors(): GlassColors {

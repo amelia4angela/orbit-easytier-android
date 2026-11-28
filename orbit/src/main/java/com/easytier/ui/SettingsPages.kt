@@ -43,6 +43,33 @@ import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import androidx.compose.ui.graphics.Color as ComposeColor
 
+/**
+ * 二级页（常规/主题/权限/关于）的底色，跟随 [LocalBgSurface]：
+ *
+ * - GRADIENT：主题渐变，**完全不透明** —— 进出转场两张页面同时在场，半透明会互相透出来。
+ * - IMAGE：同一组渐变压到 72–78% 不透明度，让壁纸透出来（否则设了壁纸一进设置页就
+ *   看不到，用户会以为背景没生效）；玻璃采样源仍是 GlassSky 那张图，顶栏模糊不受影响。
+ * - FLAT：「关闭」模式，纯色，跟着主界面走。
+ */
+@Composable
+fun settingsPageBackdrop(colors: AppColors): Brush = when (LocalBgSurface.current) {
+    BgSurface.IMAGE -> {
+        // 图片背景：留 1/4 左右的空隙让壁纸透出来（否则设了壁纸一进设置页就看不见了）
+        val alpha = if (com.easytier.ui.theme.LocalIsDarkTheme.current) 0.78f else 0.72f
+        Brush.verticalGradient(
+            listOf(
+                colors.bgStart.copy(alpha = alpha),
+                colors.bgMid.copy(alpha = alpha),
+                colors.bgEnd.copy(alpha = alpha)
+            )
+        )
+    }
+    BgSurface.FLAT -> androidx.compose.ui.graphics.SolidColor(colors.bgMid)
+    BgSurface.GRADIENT -> Brush.verticalGradient(
+        listOf(colors.bgStart, colors.bgMid, colors.bgEnd)
+    )
+}
+
 // ═══════════════════════════════════════════════════
 //  Shared shell for settings sub-pages
 // ═══════════════════════════════════════════════════
@@ -92,11 +119,9 @@ fun SettingsSubPage(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // 页面底色保留（与 MainScreen 的 GlassSky 同一组渐变）：二级页进出转场时
-            // 两张页面同时在场，不透明才不会互相透出来（旧实现就没有透底）。
-            .background(
-                Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
-            )
+            // 页面底色（与 MainScreen 的 GlassSky 同一组渐变；图片背景下半透明让壁纸透出）：
+            // 二级页进出转场时两张页面同时在场，渐变模式下不透明才不会互相透出来。
+            .background(settingsPageBackdrop(colors))
     ) {
         Column(
             modifier = Modifier
@@ -360,6 +385,10 @@ fun ThemePage(
     dynamicColor: Boolean,
     onToggleTheme: () -> Unit,
     onToggleDynamic: () -> Unit,
+    bgMode: BgMode = BgMode.GRADIENT,
+    onBgModeChange: (BgMode) -> Unit = {},
+    bgBusy: Boolean = false,
+    onRefreshBg: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val colors = currentColors()
@@ -418,6 +447,66 @@ fun ThemePage(
             }
         }
 
+        // ── 背景壁纸 ──
+        // 渐变 = 老的主题底图（离线可用）；在线二次元 = 随机图片 + 自动暗化蒙版；
+        // 关闭 = 纯色。选择即写 SharedPreferences(easytier_theme/bg_mode)，MainScreen 直接生效。
+        Text(
+            T("背景壁纸", "Background wallpaper", langZh),
+            color = colors.textTertiary,
+            fontSize = 12.sp
+        )
+
+        HmDropdownField(
+            label = T("背景模式", "Background", langZh),
+            icon = "🖼",
+            options = listOf(
+                HmDropdownOption(
+                    label = T("渐变（默认）", "Gradient (default)", langZh),
+                    value = BgMode.GRADIENT.key,
+                    hint = T("主题渐变 + 柔光，离线可用、最省电", "Theme gradient + glow, offline & cheapest", langZh)
+                ),
+                HmDropdownOption(
+                    label = T("在线二次元（静态）", "Online anime (static)", langZh),
+                    value = BgMode.ONLINE.key,
+                    hint = T("随机二次元图片，自动暗化蒙版；下次启动先用缓存图", "Random anime artwork with a scrim; cached art shows first on next launch", langZh)
+                ),
+                HmDropdownOption(
+                    label = T("关闭", "Off", langZh),
+                    value = BgMode.OFF.key,
+                    hint = T("纯色背景，不加载任何图片", "Flat theme colour, no images at all", langZh)
+                )
+            ),
+            selectedIndex = when (bgMode) {
+                BgMode.GRADIENT -> 0
+                BgMode.ONLINE -> 1
+                BgMode.OFF -> 2
+            },
+            onSelect = { index ->
+                when (index) {
+                    1 -> onBgModeChange(BgMode.ONLINE)
+                    2 -> onBgModeChange(BgMode.OFF)
+                    else -> onBgModeChange(BgMode.GRADIENT)
+                }
+            },
+            colors = colors,
+            hint = T(
+                "图片背景会自动压一层蒙版（深色主题暗化 35%），保证卡片上的文字仍然清晰。",
+                "Image backdrops get an automatic scrim (35% darkening in dark theme) so text stays legible.",
+                langZh
+            ),
+            card = true
+        )
+
+        // 换一张：仅在线模式可见
+        if (bgMode == BgMode.ONLINE) {
+            BgRefreshRow(
+                langZh = langZh,
+                busy = bgBusy,
+                colors = colors,
+                onClick = onRefreshBg
+            )
+        }
+
         // 预留位：以后的主题卡片（配色包 / 图标风格）挂在这里
         // 玻璃材质 + 半透明灰罩，保持「占位、低对比」的观感。
         Box(
@@ -443,6 +532,58 @@ fun ThemePage(
                     color = colors.textTertiary,
                     fontSize = 11.sp,
                     lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 「换一张」：只在在线背景模式下出现。
+ *
+ * 与 GeneralPage 的「重启核心」行同一套结构（内容卡玻璃材质 + 24dp 图标位 + 右侧实色
+ * 药丸按钮），只是把红色换成品牌色；下载中整行禁用并显示进度文案。
+ */
+@Composable
+private fun BgRefreshRow(
+    langZh: Boolean,
+    busy: Boolean,
+    colors: AppColors,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassCard(radius = 12.dp)
+            .clickable(enabled = !busy) { onClick() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SettingsRowIcon("↻")
+            Spacer(Modifier.width(SettingsIconGap))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    T("换一张", "Shuffle wallpaper", langZh),
+                    color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                )
+                Text(
+                    if (busy) T("正在下载新壁纸…", "Downloading a new wallpaper…", langZh)
+                    else T("重新拉取一张随机二次元图片", "Fetch another random anime artwork", langZh),
+                    color = colors.textTertiary, fontSize = 12.sp
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (busy) colors.inputBg else colors.accent)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    T("换一张", "Shuffle", langZh),
+                    color = if (busy) colors.textTertiary else ComposeColor.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }

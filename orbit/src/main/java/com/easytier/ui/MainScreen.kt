@@ -30,7 +30,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import android.graphics.Bitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,6 +49,7 @@ import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassRadius
 import com.easytier.AppLogger
 import com.easytier.ui.glass.GlassTheme
+import com.easytier.ui.glass.LocalGlassBoost
 import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.effects.GlassSky
@@ -55,6 +61,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 import kotlin.math.roundToInt
 import java.net.HttpURLConnection
 import java.net.URL
@@ -152,6 +159,57 @@ fun MainScreen(
         }
     }
 
+    // ── 在线二次元背景（阶段 8）──────────────────────────────────────────────
+    // 模式持久化在 easytier_theme/bg_mode；图片走 BgImageRepository（HttpURLConnection +
+    // 磁盘缓存 + 降采样），这里只管「什么时候加载、什么时候换」：
+    //   模式变化 / 手动换一张 → 先用缓存最新一张上屏，再后台换新；失败保持现状。
+    // 解码只在 IO 线程、只在 模式|换图|尺寸 变化时发生 —— 绘制阶段永远只画已有的 Bitmap。
+    val bgTargetPx = remember(ctx) { bgTargetWidthPx(ctx) }
+    var bgMode by remember { mutableStateOf(BgImageRepository.readMode(ctx)) }
+    var bgBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var bgLoading by remember { mutableStateOf(false) }
+    var bgRefreshKey by remember { mutableStateOf(0) }
+
+    fun setBgMode(mode: BgMode) {
+        if (mode == bgMode) return
+        bgMode = mode
+        BgImageRepository.writeMode(ctx, mode)
+    }
+
+    LaunchedEffect(bgMode, bgRefreshKey) {
+        if (bgMode != BgMode.ONLINE) {
+            val old = bgBitmap
+            bgBitmap = null
+            if (old != null) {
+                delay(400)                        // 等玻璃采样层重绘完再释放
+                runCatching { old.recycle() }
+            }
+            return@LaunchedEffect
+        }
+        // 1) 缓存先行：断网 / 端点全挂也有图，绝不留白
+        if (bgBitmap == null) {
+            withContext(Dispatchers.IO) { BgImageRepository.loadNewestCached(ctx, bgTargetPx) }
+                ?.let { bgBitmap = it }
+        }
+        // 2) 后台换新（同样一张不重复落盘；失败就保留缓存图，没缓存就回退渐变）
+        bgLoading = true
+        val fresh = try {
+            withContext(Dispatchers.IO) { BgImageRepository.downloadAndDecode(ctx, bgTargetPx) }
+        } finally {
+            bgLoading = false
+        }
+        if (fresh != null) {
+            val old = bgBitmap
+            if (old !== fresh) {
+                bgBitmap = fresh
+                if (old != null) {
+                    delay(400)
+                    runCatching { old.recycle() }
+                }
+            }
+        }
+    }
+
     var currentTab by remember { mutableStateOf(Tab.STATUS) }
     // Sub-page stack: Settings → General → Permissions, About → Privacy Policy.
     val pageStack = remember { mutableStateListOf<SettingsPage>() }
@@ -172,15 +230,37 @@ fun MainScreen(
     BackHandler(enabled = pageStack.isNotEmpty()) { closePage() }
 
     // ── 液态玻璃上下文 ──
-    // 只影响渲染层：质量档位沿用「设置 → Glass Showcase」里选过的值（没选过就按设备能力自动分级），
-    // GlassSky 用同一套主题渐变作底图，悬浮玻璃（底部导航）才能真正采样并模糊它。
+    // 只影响渲染层：质量档位沿用「设置 → Glass Showcase」里选过的值（没选过就按设备能力自动分级）。
+    // GlassSky 画的东西就是玻璃采样源，所以在线图片也必须在**这个 Canvas 里**画（不能另起
+    // 一层图片 Composable，否则玻璃采到的是渐变、屏幕上却是一张照片）。
     // 业务状态 / 网络 / 页面栈全部还在下面这个 Box 里，一行没动。
     val glassLevel = rememberGlassLevel()
+    val darkBg = LocalIsDarkTheme.current
     GlassTheme(level = glassLevel.value) {
+        // 图片背景：填充更实 + 模糊更强（LocalGlassBoost），二级页底色按 LocalBgSurface 走。
+        CompositionLocalProvider(
+            LocalGlassBoost provides if (bgMode == BgMode.ONLINE) 1.55f else 1f,
+            LocalBgSurface provides when {
+                bgMode == BgMode.OFF -> BgSurface.FLAT
+                bgMode == BgMode.ONLINE && bgBitmap != null -> BgSurface.IMAGE
+                else -> BgSurface.GRADIENT
+            }
+        ) {
         GlassSky(
             modifier = Modifier.fillMaxSize(),
             colors = glassColors(),
-            backdrop = { canvasSize -> drawOrbitBackdrop(colors, canvasSize) }
+            backdrop = { canvasSize ->
+                // draw scope 里读 state：模式/换图时 Compose 会自动重绘这一层，
+                // 玻璃采样（GlassBackdropSlice）跟着一起换，图片本身不参与逐帧动画。
+                val bmp = bgBitmap
+                when {
+                    bgMode == BgMode.ONLINE && bmp != null ->
+                        drawImageBackdrop(bmp, canvasSize, dark = darkBg)
+                    bgMode == BgMode.OFF ->
+                        drawRect(colors.bgMid, size = canvasSize)
+                    else -> drawOrbitBackdrop(colors, canvasSize)
+                }
+            }
         ) {
             Box(
                 modifier = modifier.fillMaxSize()
@@ -231,6 +311,10 @@ fun MainScreen(
                                     dynamicColor = dynamicColor,
                                     onToggleTheme = onToggleTheme,
                                     onToggleDynamic = onToggleDynamic,
+                                    bgMode = bgMode,
+                                    onBgModeChange = { setBgMode(it) },
+                                    bgBusy = bgLoading,
+                                    onRefreshBg = { bgRefreshKey++ },
                                     onBack = { closePage() }
                                 )
                                 SettingsPage.ABOUT -> AboutPage(
@@ -430,6 +514,7 @@ fun MainScreen(
                 }
             }
         }
+        } // end CompositionLocalProvider(LocalGlassBoost / LocalBgSurface)
     }
 }
 
@@ -464,6 +549,42 @@ private fun DrawScope.drawOrbitBackdrop(colors: AppColors, canvasSize: Size) {
         color = colors.glowColorDark,
         radius = 110.dp.toPx(),
         center = Offset(30.dp.toPx(), canvasSize.height + 50.dp.toPx())
+    )
+}
+
+/**
+ * 在线二次元图片背景：等效 `ContentScale.Crop` 的居中裁剪 + 一层主题蒙版。
+ *
+ * 为什么蒙版是必需项：随机二次元图色彩不可控（大面积白/亮粉），白字和白玻璃直接糊在
+ * 一起。深色主题压暗 35%（默认值），浅色主题提亮 30% —— 前者保住白字与玻璃对比，
+ * 后者把照片推亮好让深色文字站得住。
+ *
+ * 画在 [GlassSky] 的 Canvas 里（不是另开一层图片 Composable），所以玻璃采样源、
+ * 屏幕上看到的像素是同一张图；这个函数只在模式/换图/size 变化时被调用，不参与逐帧动画。
+ */
+private fun DrawScope.drawImageBackdrop(bmp: Bitmap, canvasSize: Size, dark: Boolean) {
+    if (canvasSize.width <= 0f || canvasSize.height <= 0f) return
+    val iw = bmp.width.toFloat()
+    val ih = bmp.height.toFloat()
+    if (iw <= 0f || ih <= 0f) return
+
+    val scale = max(canvasSize.width / iw, canvasSize.height / ih)
+    val dstW = (iw * scale).roundToInt()
+    val dstH = (ih * scale).roundToInt()
+    val dstX = ((canvasSize.width - dstW) / 2f).roundToInt()
+    val dstY = ((canvasSize.height - dstH) / 2f).roundToInt()
+
+    drawImage(
+        image = bmp.asImageBitmap(),
+        srcOffset = IntOffset.Zero,
+        srcSize = IntSize(bmp.width, bmp.height),
+        dstOffset = IntOffset(dstX, dstY),
+        dstSize = IntSize(dstW, dstH),
+        filterQuality = FilterQuality.Medium
+    )
+    drawRect(
+        color = if (dark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.30f),
+        size = canvasSize
     )
 }
 
@@ -1294,15 +1415,13 @@ fun AboutPage(
     }
 
     // 顶栏是 overlay：内容 Column 占满整屏并在顶部让出 topBarHeight，
-    // 滚动时内容从玻璃顶栏下面穿过。页面底色保留（与 GlassSky 同一组渐变），
-    // 转场时两张页面同时在场也不会互相透出。返回/标题逻辑完全不变。
+    // 滚动时内容从玻璃顶栏下面穿过。页面底色与二级设置页同一个 helper
+    // （渐变背景时不透明，图片背景下半透明让壁纸透出）。返回/标题逻辑完全不变。
     val topBarHeight = 56.dp
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
-            )
+            .background(settingsPageBackdrop(colors))
     ) {
         // Content
         Column(

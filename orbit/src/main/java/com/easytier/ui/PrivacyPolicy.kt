@@ -218,9 +218,7 @@ fun PrivacyDocPage(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(colors.bgStart, colors.bgMid, colors.bgEnd))
-            )
+            .background(settingsPageBackdrop(colors))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(

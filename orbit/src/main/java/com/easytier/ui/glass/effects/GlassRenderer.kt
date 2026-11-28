@@ -210,7 +210,10 @@ fun Modifier.glassSurface(
     val colors = glassColors()
     val perf = rememberGlassPerformance(level)
     val effective = perf.effective
-    val fillScale = effective.fillAlpha * intensity.coerceIn(0.15f, 1.5f)
+    // 图片背景（LocalGlassBoost > 1）时填充更实，否则浅色玻璃压在花色照片上会掉字。
+    val boost = com.easytier.ui.glass.LocalGlassBoost.current
+    val fillScale = (effective.fillAlpha * intensity.coerceIn(0.15f, 1.5f) * boost)
+        .coerceIn(0.15f, 3f)
     // Real, shader-driven optics: only on HIGH, only where RuntimeShader exists. Otherwise the
     // static gradients below are the whole story (and nothing extra is allocated).
     val lensActive = effective == GlassLevel.HIGH &&
@@ -229,10 +232,19 @@ fun Modifier.glassSurface(
         )
     }
     // Android 13 以下 / 手动 LITE：不开启玻璃质感，回到原生纯色材质。
+    // 图片背景下把填充再压向不透明（没有模糊挡着，花色会直接透上来）。
     if (effective == GlassLevel.LITE) {
+        val solid = if (boost > 1.01f) {
+            colors.stableFill.copy(
+                alpha = colors.stableFill.alpha +
+                    (1f - colors.stableFill.alpha) * 0.7f
+            )
+        } else {
+            colors.stableFill
+        }
         return result
             .clip(shape)
-            .background(colors.stableFill, shape)
+            .background(solid, shape)
             .border(0.5.dp, colors.border, shape)
     }
     return result

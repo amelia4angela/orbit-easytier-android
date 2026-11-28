@@ -216,6 +216,13 @@ fun Modifier.glassSurface(
             spotColor = colors.shadow
         )
     }
+    // Android 13 以下 / 手动 LITE：不开启玻璃质感，回到原生纯色材质。
+    if (effective == GlassLevel.LITE) {
+        return result
+            .clip(shape)
+            .background(colors.stableFill, shape)
+            .border(0.5.dp, colors.border, shape)
+    }
     return result
         .clip(shape)
         .background(

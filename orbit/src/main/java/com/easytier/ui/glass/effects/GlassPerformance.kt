@@ -98,7 +98,8 @@ fun rememberGlassPerformance(
         }
     }
 
-    val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // Glass质感只在 Android 13+ (API 33) 开启；以下设备一律原生材质（用户定的分级）。
+    val blurSupported = Build.VERSION.SDK_INT >= 33
     val effective = when {
         !blurSupported -> GlassLevel.LITE
         reduced && downgradeOnReducedMotion -> GlassLevel.LITE

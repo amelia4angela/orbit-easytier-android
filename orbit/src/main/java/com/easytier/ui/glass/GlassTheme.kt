@@ -50,10 +50,9 @@ enum class GlassLevel(val labelZh: String, val labelEn: String) {
         }
 
     companion object {
-        /** Device default: 33+ HIGH, 31-32 BALANCED, below LITE. */
+        /** Device default: glass only on Android 13+ (33+ HIGH); everything below is LITE. */
         fun auto(sdk: Int = Build.VERSION.SDK_INT): GlassLevel = when {
             sdk >= 33 -> HIGH
-            sdk >= 31 -> BALANCED
             else -> LITE
         }
     }

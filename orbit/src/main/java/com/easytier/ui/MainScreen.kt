@@ -1466,7 +1466,7 @@ fun AboutPage(
                                         updateStatus == "latest" ->
                                             T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
                                         updateStatus == "error" ->
-                                            T("检查失败，请检查网络连接", "Check failed, check your network", langZh)
+                                            T("检查失败：网络受限（已试 3 个镜像，可稍后重试）", "Check failed — all mirrors unreachable, retry later", langZh)
                                         else -> T("当前版本 v$version · 点击检查", "Current v$version · tap to check", langZh)
                                     },
                                     color = when {
@@ -1592,8 +1592,15 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
 //  Update check — API, version compare, download
 // ═══════════════════════════════════════════════════
 
-private const val UPDATE_API =
-    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
+/**
+ * 更新检查的端点顺序：GitHub 直连 → ghfast 代理 → kkgithub 镜像。
+ * 国内直连 api.github.com 经常超时（用户报「连接不到网络」），必须像 PRIVACY.md 那样带镜像链。
+ */
+private val UPDATE_API_MIRRORS = listOf(
+    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest",
+    "https://ghfast.top/https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest",
+    "https://api.kkgithub.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
+)
 
 /** 「自动检查更新」偏好：与 MainActivity 的其他状态放同一个 SharedPreferences 文件。 */
 private const val UPDATE_PREFS = "easytier_state"
@@ -1625,7 +1632,21 @@ data class UpdateInfo(
 
 /** Blocking GET of the latest release. Always call from Dispatchers.IO. */
 private fun fetchLatestRelease(): UpdateInfo {
-    val conn = URL(UPDATE_API).openConnection() as HttpURLConnection
+    var lastError: Exception? = null
+    for (api in UPDATE_API_MIRRORS) {
+        try {
+            return fetchLatestReleaseFrom(api)
+        } catch (e: Exception) {
+            lastError = e
+            AppLogger.w("Update", "endpoint failed: $api (${e.message})")
+        }
+    }
+    throw lastError ?: IllegalStateException("all update endpoints failed")
+}
+
+/** Single-endpoint fetch; throws on HTTP/parse failure so the caller can try the next mirror. */
+private fun fetchLatestReleaseFrom(apiUrl: String): UpdateInfo {
+    val conn = URL(apiUrl).openConnection() as HttpURLConnection
     conn.requestMethod = "GET"
     conn.setRequestProperty("Accept", "application/vnd.github+json")
     conn.setRequestProperty("User-Agent", "Orbit-Android")

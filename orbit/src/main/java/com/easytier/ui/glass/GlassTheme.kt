@@ -36,7 +36,7 @@ enum class GlassLevel(val labelZh: String, val labelEn: String) {
     /** Blur radius applied to the backdrop copy for floating glass. */
     val backdropBlur: Float
         get() = when (this) {
-            HIGH -> 26f
+            HIGH -> 32f
             BALANCED -> 14f
             LITE -> 0f
         }
@@ -70,19 +70,24 @@ private const val KEY_QUALITY = "glass_quality"
  * Writing `.value` persists immediately, which is what the Showcase quality switch relies on.
  */
 @Composable
-fun rememberGlassLevel(): MutableState<GlassLevel> {
+fun rememberGlassLevel(persist: Boolean = false): MutableState<GlassLevel> {
     val ctx = LocalContext.current
     val prefs = remember(ctx) { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     val state = remember {
-        val stored = prefs.getString(KEY_QUALITY, null)
+        // Default: always device-auto. A level picked in the Showcase is a *local preview*
+        // and must not leak into the whole app (that bug made every screen render native
+        // material after a single tap on "LITE"). Only an explicit persist=true reads/writes
+        // SharedPreferences, and stale keys from older builds are ignored.
+        val stored = if (persist) prefs.getString(KEY_QUALITY, null) else null
         mutableStateOf(
             stored?.let { name -> runCatching { GlassLevel.valueOf(name) }.getOrNull() }
                 ?: GlassLevel.auto()
         )
     }
-    // Persist on change (the first run simply rewrites the resolved default).
-    LaunchedEffect(state.value) {
-        prefs.edit().putString(KEY_QUALITY, state.value.name).apply()
+    if (persist) {
+        LaunchedEffect(state.value) {
+            prefs.edit().putString(KEY_QUALITY, state.value.name).apply()
+        }
     }
     return state
 }

@@ -248,7 +248,7 @@ fun PrivacyDocPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     // 正文面板：内容卡玻璃材质（低强度，长文可读性优先）
-                    .glassCard(radius = 14.dp, intensity = 0.16f)
+                    .glassCard(radius = 14.dp, intensity = 0.5f)
                     .padding(14.dp)
             ) {
                 MarkdownBody(md = body, colors = colors)

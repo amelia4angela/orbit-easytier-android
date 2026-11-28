@@ -87,8 +87,8 @@ data class GlassColors(
         fun of(app: AppColors, dark: Boolean): GlassColors = if (dark) {
             GlassColors(
                 isDark = true,
-                fillTop = Color(0x1FFFFFFF),
-                fillBottom = Color(0x0DFFFFFF),
+                fillTop = Color(0x38FFFFFF),
+                fillBottom = Color(0x21FFFFFF),
                 stableFill = Color(0xE61A1D23),
                 innerHighlight = Color(0x2EFFFFFF),
                 border = Color(0x33FFFFFF),

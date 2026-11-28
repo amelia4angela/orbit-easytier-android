@@ -184,7 +184,7 @@ fun capsuleShape(): RoundedCornerShape = RoundedCornerShape(percent = 50)
 fun Modifier.glassCard(
     radius: Dp = GlassRadius.lg,
     shape: Shape = glassShape(radius),
-    intensity: Float = 0.18f,
+    intensity: Float = 0.55f,
     shadowElevation: Dp = 0.dp
 ): Modifier {
     val colors = glassColors()

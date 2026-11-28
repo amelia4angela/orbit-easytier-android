@@ -18,9 +18,15 @@ mkdir -p "$LIB"
   https://repo1.maven.org/maven2/org/antlr/antlr4-runtime/4.11.1/antlr4-runtime-4.11.1.jar
 
 # 用 Gradle 缓存里的 kotlin 编译器，避免额外下载（只要 modules-2 里的原版 jar，
-# jars-9 下是 Gradle 插桩过的副本，脱离 Gradle 进程跑不起来）
-KC=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "kotlin-compiler-embeddable-*.jar" | head -1)
-STD=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "kotlin-stdlib-[0-9]*.jar" | head -1)
+# jars-9 下是 Gradle 插桩过的副本，脱离 Gradle 进程跑不起来）。
+# 按版本号取最高的那一份：工程升级 Kotlin 后缓存里会同时存在新旧编译器，
+# 自测必须用工程实际使用的新编译器（K2）跑，否则测的是旧行为。
+newest_jar() {
+  find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "$1" -printf '%f\t%p\n' 2>/dev/null \
+    | sort -V -t$'\t' -k1,1 | tail -1 | cut -f2-
+}
+KC=$(newest_jar "kotlin-compiler-embeddable-*.jar")
+STD=$(newest_jar "kotlin-stdlib-[0-9]*.jar")
 TROVE=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "trove4j-*.jar" | head -1)
 DAEMON=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "kotlin-daemon-embeddable-*.jar" | head -1)
 ANN=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "annotations-2[0-9]*.jar" | head -1)
@@ -29,11 +35,23 @@ if [ -z "$KC" ] || [ -z "$STD" ]; then
   exit 1
 fi
 
+# Kotlin 2.x 的 compiler-embeddable 在启动时就要 kotlin-reflect（1.x 里是内嵌的）。
+# 优先用与编译器同版本的 reflect，没有就下到 lib/ 里。
+KVER=$(basename "$KC" .jar); KVER=${KVER#kotlin-compiler-embeddable-}
+REFLECT=$(newest_jar "kotlin-reflect-$KVER.jar")
+if [ -z "$REFLECT" ]; then
+  curl -sSfL -o "$LIB/kotlin-reflect-$KVER.jar" \
+    "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-reflect/$KVER/kotlin-reflect-$KVER.jar"
+  REFLECT="$LIB/kotlin-reflect-$KVER.jar"
+fi
+COROUTINES=$(find "$HOME/.gradle/caches" -path "*/modules-2/*" -name "kotlinx-coroutines-core-jvm-*.jar" | head -1)
+
 DEPS="$LIB/json.jar:$LIB/tomlj-1.1.1.jar:$LIB/antlr4-runtime-4.11.1.jar"
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
-java -cp "$KC:$STD:$TROVE:$DAEMON:$ANN" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
+echo "编译自测源码：Kotlin ${KVER}（$(basename "$KC")）"
+java -cp "$KC:$STD:$REFLECT:$TROVE:$DAEMON:$COROUTINES:$ANN" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
   -classpath "$DEPS:$STD" -d "$OUT" -no-reflect -nowarn \
   "$REPO/orbit/src/main/java/com/easytier/TomlUtils.kt" \
   "$REPO/orbit/src/main/java/com/easytier/ui/ConfigState.kt" \

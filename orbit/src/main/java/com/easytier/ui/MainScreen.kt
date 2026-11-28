@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassRadius
+import com.easytier.AppLogger
 import com.easytier.ui.glass.GlassTheme
 import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.glassCard

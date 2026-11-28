@@ -53,6 +53,9 @@ import com.easytier.ui.glass.GlassTheme
 import com.easytier.ui.glass.LocalGlassBoost
 import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.components.glassPress
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.effects.GlassSky
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
@@ -909,6 +912,7 @@ private fun ConfigTab(
     onStopService: () -> Unit
 ) {
     val colors = currentColors()
+    val glass = glassColors()
     val scrollState = rememberScrollState()
     var hasUnsaved by remember { mutableStateOf(false) }
     var lastConfig by remember { mutableStateOf(config) }
@@ -948,8 +952,13 @@ private fun ConfigTab(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                // 配置管理条：分组容器玻璃材质（内容卡档，低强度）
-                .glassCard(radius = 16.dp)
+                // 配置管理条：乳白玻璃卡（与启动卡片同一套填充/描边/阴影），
+                // 内含的输入块与按钮再各自上低一层的材质。
+                .milkyGlass(
+                    radius = GlassRadius.md,
+                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                    shadowElevation = 18.dp
+                )
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -958,11 +967,13 @@ private fun ConfigTab(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    val selectorShape = remember { glassShape(GlassRadius.sm) }
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.inputBg)
+                            // 内嵌输入块：stableFill 不透明底（乳白卡上必须够实，文件名才读得清）
+                            .clip(selectorShape)
+                            .background(glass.stableFill, selectorShape)
                             .clickable(enabled = !locked) { onConfigNameClick() }
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
@@ -1115,24 +1126,39 @@ private fun ActionBtn(
     danger: Boolean = false,
     enabled: Boolean = true
 ) {
+    val glass = glassColors()
+    val shape = remember { glassShape(GlassRadius.sm) }
     val textColor = when {
-        !enabled -> (if (accent) Color.White else colors.textTertiary).copy(alpha = 0.6f)
+        !enabled -> (if (accent) Color.White else glass.textTertiary).copy(alpha = 0.6f)
         accent -> Color.White
         danger -> colors.dangerText
-        else -> colors.textSecondary
+        else -> glass.textSecondary
     }
+    // 材质分层与 GlassButton 同一套：强调/危险 = 品牌色或状态色打底 + glassSurface 高光描边；
+    // 普通/禁用 = 玻璃填充（fillGradient）+ 0.5dp 描边，禁用再压一档透明度。
     val bgMod = when {
-        !enabled && accent -> Modifier.background(colors.accent.copy(alpha = 0.35f))
-        accent -> Modifier.background(colors.accentGradient)
-        !enabled -> Modifier.background(colors.inputBg)
-        danger -> Modifier.background(colors.dangerBg)
-        else -> Modifier.background(colors.inputBg)
+        !enabled && accent -> Modifier.background(colors.accent.copy(alpha = 0.35f), shape)
+        accent -> Modifier
+            .background(colors.accentGradient, shape)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.5f)
+        danger -> Modifier
+            .background(colors.dangerBg, shape)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.35f)
+        !enabled -> Modifier
+            // 禁用态：主题中性填充（与 HmSwitch 关闭轨道同一档）+ 玻璃描边，
+            // 保持「按不动」的观感；浅色下若用白色系玻璃填充会直接看不见。
+            .background(colors.inputBg.copy(alpha = 0.6f), shape)
+            .border(GlassSize.hairline, glass.border, shape)
+        else -> Modifier
+            .background(glass.fillGradient, shape)
+            .border(GlassSize.hairline, glass.rimGradient, shape)
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            // 按压 spring（0.955，GlassMotion）取代 Material 涟漪；禁用时不注册点击。
+            .glassPress(enabled = enabled, onClick = onClick)
+            .clip(shape)
             .then(bgMod)
-            .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 6.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1396,6 +1422,7 @@ fun AboutPage(
     val ctx = LocalContext.current
     val version: String = remember { appVersionName(ctx) }
     val colors = currentColors()
+    val glass = glassColors()
     val scrollState = rememberScrollState()
 
     // 手动检查的按钮状态留在本页；updateInfo / 弹窗状态在 MainScreen（启动检查共用）。
@@ -1491,12 +1518,14 @@ fun AboutPage(
                     Spacer(Modifier.height(12.dp))
 
                     // Official EasyTier link
+                    val linkShape = remember { glassShape(GlassRadius.sm) }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // 品牌色底 + 玻璃薄雾/描边（与弹窗主按钮同一手法）
-                            .background(colors.accentContainer.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .glassSurface(radius = 8.dp, intensity = 0.3f)
+                            // 品牌色底 + 玻璃薄雾/描边（与弹窗主按钮同一手法）。
+                            // 底与描边共用同一个 shape，避免两者圆角不一致露边。
+                            .background(colors.accentContainer.copy(alpha = 0.5f), linkShape)
+                            .glassSurface(radius = GlassRadius.sm, shape = linkShape, intensity = 0.3f)
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Row(
@@ -1521,8 +1550,8 @@ fun AboutPage(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // 可点链接块：内容卡玻璃材质
-                            .glassCard(radius = 8.dp, intensity = 0.22f)
+                            // 可点链接块：内容卡玻璃材质（与上面品牌链接块同一圆角/强度档）
+                            .glassCard(radius = GlassRadius.sm, intensity = 0.22f)
                             .clickable {
                                 val intent = android.content.Intent(
                                     android.content.Intent.ACTION_VIEW,
@@ -1637,8 +1666,8 @@ fun AboutPage(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(0.5.dp)
-                                .background(colors.surfaceBorder.copy(alpha = 0.5f))
+                                .height(GlassSize.hairline)
+                                .background(glass.border)
                         )
 
                         Spacer(Modifier.height(8.dp))
@@ -1698,6 +1727,7 @@ fun AboutPage(
 
 @Composable
 private fun AboutRow(label: String, value: String?, colors: AppColors) {
+    val glass = glassColors()
     if (value != null) {
         Row(
             modifier = Modifier
@@ -1712,8 +1742,8 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(0.5.dp)
-                .background(colors.surfaceBorder.copy(alpha = 0.5f))
+                .height(GlassSize.hairline)
+                .background(glass.border)
         )
     }
 }
@@ -1963,6 +1993,7 @@ private fun UpdateDialog(
     onDismiss: () -> Unit
 ) {
     val colors = currentColors()
+    val glass = glassColors()
     if (info == null) return
 
     HmDialog(
@@ -1979,12 +2010,14 @@ private fun UpdateDialog(
         )
 
         if (info.body.isNotBlank()) {
+            val notesShape = remember { glassShape(GlassRadius.sm) }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 220.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(colors.inputBg)
+                    // 更新说明：弹窗玻璃面板里的内嵌 stableFill 块（长文本必须够实）
+                    .clip(notesShape)
+                    .background(glass.stableFill, notesShape)
                     .padding(10.dp)
                     .verticalScroll(rememberScrollState())
             ) {

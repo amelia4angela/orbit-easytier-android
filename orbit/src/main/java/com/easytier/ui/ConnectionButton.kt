@@ -1,25 +1,26 @@
 package com.easytier.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassShapes
+import com.easytier.ui.glass.components.glassPress
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassColors
 import com.easytier.ui.theme.*
 
 enum class ConnectionStatus {
@@ -45,33 +46,24 @@ fun ControlFAB(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.85f else 1f,
-        animationSpec = tween(150),
-        label = "fabScale"
-    )
-
+    // 玻璃圆钮：先铺品牌 / 危险渐变打底，再叠 glassSurface 的高光 + 0.5dp 描边 ——
+    // 与「应用并启动」CTA、GlassButton 同一手法。按压交回 glassPress（GlassMotion spring
+    // 0.955），取代原来 150ms 的 0.85 scale tween。
+    val fabShape = GlassShapes.capsule
     Box(
         modifier = modifier
             .size(56.dp)
-            .scale(scale)
-            .clip(CircleShape)
+            .glassPress(onClick = onClick)
+            .clip(fabShape)
             .background(
                 if (isConnected) Brush.radialGradient(
                     listOf(colors.statusBad, colors.statusBad.copy(alpha = 0.8f))
-                )
-                else Brush.radialGradient(
+                ) else Brush.radialGradient(
                     listOf(colors.accentLight, colors.accent.copy(alpha = 0.9f))
-                )
+                ),
+                fabShape
             )
-            .clickable(
-                onClick = {
-                    pressed = true
-                    onClick()
-                    pressed = false
-                }
-            ),
+            .glassSurface(radius = 28.dp, shape = fabShape, intensity = 0.5f),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -100,32 +92,20 @@ fun ConnectionBanner(
     langZh: Boolean = true
 ) {
     val colors = currentColors()
+    val glass = glassColors()
     val isConnected = state.status == ConnectionStatus.RUNNING || state.status == ConnectionStatus.NO_TUN
     val isStarting = state.status == ConnectionStatus.STARTING
     val isRevoked = state.status == ConnectionStatus.REVOKED
 
-    val bannerBg by animateColorAsState(
-        targetValue = if (isConnected) colors.statusConnectedBg
-                     else if (isRevoked || state.status == ConnectionStatus.ERROR) colors.statusBad.copy(alpha = 0.15f)
-                     else colors.surfaceDim,
-        animationSpec = tween(400),
-        label = "bannerBg"
-    )
-
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                when {
-                    isConnected -> Brush.horizontalGradient(
-                        listOf(bannerBg, colors.statusGood.copy(alpha = 0.06f))
-                    )
-                    isRevoked || state.status == ConnectionStatus.ERROR -> Brush.horizontalGradient(
-                        listOf(bannerBg, colors.statusBad.copy(alpha = 0.06f))
-                    )
-                    else -> Brush.horizontalGradient(listOf(colors.surface, colors.surfaceDim))
-                }
+            // 乳白玻璃横幅（卡片档 18dp 柔和阴影）。状态语义不再靠整块底色渐变，
+            // 而是由左侧状态圆点 + 标题字色承载（与原实现同一套状态色）。
+            .milkyGlass(
+                radius = GlassRadius.lg,
+                intensity = if (glass.isDark) 1.15f else 1.0f,
+                shadowElevation = 18.dp
             )
             .clickable(onClick = onClick)
             .padding(16.dp)

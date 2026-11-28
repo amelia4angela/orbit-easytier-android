@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,7 +46,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
@@ -92,6 +96,8 @@ fun HmDropdownField(
     enabled: Boolean = LocalConfigEditable.current
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val glass = glassColors()
+    val fieldShape = remember { glassShape(GlassRadius.sm) }
     // Popup stays mounted until the exit animation finishes.
     var mounted by remember { mutableStateOf(false) }
     LaunchedEffect(expanded) {
@@ -134,11 +140,12 @@ fun HmDropdownField(
                 .then(
                     if (card) {
                         // 设置页下拉行：与 SettingsNavRow 同一套内容卡玻璃材质
-                        Modifier.glassCard(radius = 12.dp)
+                        Modifier.glassCard(radius = GlassRadius.sm)
                     } else {
+                        // 表单内的下拉：与 HmTextField 同一形态 —— 透明底 + 0.5dp 描边 + 同一圆角
                         Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(0.5.dp, colors.inputBorder, RoundedCornerShape(10.dp))
+                            .clip(fieldShape)
+                            .border(GlassSize.hairline, colors.inputBorder, fieldShape)
                     }
                 )
         ) {
@@ -219,19 +226,27 @@ fun HmDropdownField(
                             modifier = Modifier
                                 // 小弹层：按内容自适应，下限 160dp、上限 220dp，
                                 // 不再跟着整行宽度走；位置由下方 PositionProvider 右对齐。
+                                // 面板材质 = 乳白玻璃 + 0.5dp 描边 + 弹窗档 24dp 阴影
+                                // （Popup 是独立窗口，采样不到 GlassSky，只上材质不模糊）。
                                 .widthIn(min = 160.dp, max = 220.dp)
-                                .flGlassCard(colors, 16.dp)
+                                .milkyGlass(
+                                    radius = GlassRadius.md,
+                                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                                    shadowElevation = 24.dp
+                                )
                                 .padding(vertical = 6.dp, horizontal = 6.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             options.forEachIndexed { index, option ->
                                 val selected = index == selectedIndex
+                                val optionShape = glassShape(GlassRadius.sm)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(optionShape)
                                         .background(
-                                            if (selected) colors.accentContainer else androidx.compose.ui.graphics.Color.Transparent
+                                            if (selected) glass.accentSoft else Color.Transparent,
+                                            optionShape
                                         )
                                         .clickable {
                                             expanded = false

@@ -54,8 +54,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.components.milkyGlass
 import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassColors
 import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
@@ -571,7 +574,13 @@ private fun SpeedWaveCard(
 
     Column(
         modifier = modifier
-            .flGlassCard(colors, 16.dp)
+            // 网速卡：乳白玻璃卡（卡片档 18dp 阴影）；内部层级不动 ——
+            // 顶部「流量总量」11sp 灰字 + 数值，中间波形，底部「当前网速」19sp 大字。
+            .milkyGlass(
+                radius = GlassRadius.md,
+                intensity = if (glassColors().isDark) 1.15f else 1.0f,
+                shadowElevation = 18.dp
+            )
             .padding(12.dp)
     ) {
         // ── Total transferred ──

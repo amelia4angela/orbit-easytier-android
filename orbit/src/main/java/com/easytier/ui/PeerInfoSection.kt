@@ -20,7 +20,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.glassColors
 import com.easytier.ui.theme.*
 
 data class PeerInfoItem(
@@ -50,14 +54,20 @@ fun PeerInfoSection(
     langZh: Boolean = true
 ) {
     val colors = currentColors()
+    val glass = glassColors()
     val allNodes = listOfNotNull(myNode) + peers
     val isConnected = myNode != null
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // 节点列表属于「内容卡」→ 内容卡玻璃材质（低强度、无背景模糊），保证多行信息可读
-            .glassCard(radius = 16.dp, shadowElevation = 2.dp)
+            // 节点列表卡：乳白玻璃（与启动卡片同一套填充），卡片档 18dp 柔和阴影。
+            // 行级文字仍是原来的层级（title 次级 / 数值三级），不改字号与颜色。
+            .milkyGlass(
+                radius = GlassRadius.md,
+                intensity = if (glass.isDark) 1.15f else 1.0f,
+                shadowElevation = 18.dp
+            )
             .padding(4.dp)
     ) {
         Column {
@@ -92,8 +102,8 @@ fun PeerInfoSection(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
-                                .height(0.5.dp)
-                                .background(colors.surfaceBorder.copy(alpha = 0.3f))
+                                .height(GlassSize.hairline)
+                                .background(glass.border)
                         )
                     }
                 }
@@ -224,8 +234,8 @@ private fun PeerRow(item: PeerInfoItem, colors: AppColors, langZh: Boolean) {
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 0.dp)
                     .padding(bottom = 10.dp)
-                    // 节点详情面板：展开区也走内容卡玻璃材质（低强度，压在行卡之上）
-                    .glassCard(radius = 8.dp, intensity = 0.22f)
+                    // 节点详情面板：展开区用内嵌 stableFill 玻璃块（低强度，压在乳白行卡之上）
+                    .glassCard(radius = GlassRadius.sm, intensity = 0.22f)
                     .padding(12.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -38,6 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.easytier.TomlUtils
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassShapes
+import com.easytier.ui.glass.GlassSize
+import com.easytier.ui.glass.components.glassPress
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.*
 
 /**
@@ -57,6 +65,7 @@ fun ConfigForm(
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
+    val glass = glassColors()
     // 由 ConfigTab 在表单根节点下发（运行中 = false）。表单里所有输入组件都读这个值，
     // 不需要在每个调用点重复传 enabled。
     val editable = LocalConfigEditable.current
@@ -71,7 +80,12 @@ fun ConfigForm(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .flGlassCard(colors, 20.dp)
+                // 配置分组卡：乳白玻璃（卡片档 = 18dp 柔和阴影）
+                .milkyGlass(
+                    radius = GlassRadius.lg,
+                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                    shadowElevation = 18.dp
+                )
                 .padding(16.dp)
         ) {
             Column(
@@ -106,13 +120,14 @@ fun ConfigForm(
                         colors = colors
                     )
                     Spacer(Modifier.width(6.dp))
+                    val eyeShape = remember { glassShape(GlassRadius.sm) }
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.inputBg)
-                            .border(0.5.dp, colors.inputBorder, RoundedCornerShape(12.dp))
-                            .clickable(enabled = editable) { secretVisible = !secretVisible },
+                            // 输入区右侧的内嵌玻璃按钮（与透明底输入框同一套描边/圆角）
+                            .glassPress(enabled = editable) { secretVisible = !secretVisible }
+                            .clip(eyeShape)
+                            .glassSurface(radius = GlassRadius.sm, shape = eyeShape, intensity = 0.8f),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(if (secretVisible) "🙈" else "👁", fontSize = 16.sp)
@@ -140,7 +155,12 @@ fun ConfigForm(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .flGlassCard(colors, 16.dp)
+                        // 内嵌块档：乳白玻璃 + 12dp 阴影（比外层配置卡低一档）
+                        .milkyGlass(
+                            radius = GlassRadius.md,
+                            intensity = if (glass.isDark) 1.1f else 1.0f,
+                            shadowElevation = 12.dp
+                        )
                         .padding(12.dp)
                 ) {
                     Column(
@@ -175,11 +195,13 @@ fun ConfigForm(
                                     label = "nodeRowLift"
                                 )
                                 val rowBg by animateColorAsState(
-                                    targetValue = if (pressed) colors.inputBg else colors.surface,
+                                    // 按压高亮走淡蓝 accentSoft（与底栏/下拉选中同一语言），
+                                    // 常态是一层极薄的玻璃白（fillBottom），不再用 surface/inputBg 手写色。
+                                    targetValue = if (pressed) glass.accentSoft else glass.fillBottom,
                                     animationSpec = tween(durationMillis = 110, easing = LinearEasing),
                                     label = "nodeRowBg"
                                 )
-                                val rowShape = RoundedCornerShape(10.dp)
+                                val rowShape = glassShape(GlassRadius.sm)
                                 val density = LocalDensity.current
                                 val shadowTint = ComposeColor.Black.copy(alpha = 0.10f)
                                 Row(
@@ -222,14 +244,17 @@ fun ConfigForm(
                             }
                         }
 
+                        val addShape = remember { glassShape(GlassRadius.sm) }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable(enabled = editable) {
+                                // 「添加节点」= 玻璃行按钮（描边 + 高光，按压 spring）
+                                .glassPress(enabled = editable) {
                                     editingIndex = -1
                                     nodeDialogVisible = true
                                 }
+                                .clip(addShape)
+                                .glassSurface(radius = GlassRadius.sm, shape = addShape, intensity = 0.6f)
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -313,11 +338,18 @@ fun ConfigForm(
         }
 
         // ── DNS Config (own card, right after Basic Config) ──
+        val dnsShape = remember { glassShape(GlassRadius.lg) }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .flGlassCard(colors, 20.dp)
-                .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                // DNS 卡：乳白玻璃 + accent 描边（强调这是一块可以整体开关的功能卡）
+                .milkyGlass(
+                    radius = GlassRadius.lg,
+                    shape = dnsShape,
+                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                    shadowElevation = 18.dp
+                )
+                .border(1.dp, glass.accent.copy(alpha = 0.45f), dnsShape)
                 .padding(16.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -362,7 +394,12 @@ fun ConfigForm(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .flGlassCard(colors, 20.dp)
+                // 高级选项卡：与上面两张配置卡同一材质
+                .milkyGlass(
+                    radius = GlassRadius.lg,
+                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                    shadowElevation = 18.dp
+                )
         ) {
             Column {
                 Row(
@@ -804,11 +841,14 @@ internal fun HmTextField(
     enabled: Boolean = LocalConfigEditable.current
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val glass = glassColors()
+    val fieldShape = remember { glassShape(GlassRadius.sm) }
 
-    // Animate border color on focus; a disabled field never shows the accent border.
+    // 聚焦描边走 Glass 规范的 accent；静止态仍用主题的 inputBorder（浅色主题下
+    // glass.border 是 20% 白，压在白卡上看不见）。宽度 0.5dp → 1dp 也走 GlassSize。
     val borderColor by animateColorAsState(
-        targetValue = if (enabled && isFocused) colors.accent else colors.inputBorder,
-        animationSpec = tween(200),
+        targetValue = if (enabled && isFocused) glass.accent else colors.inputBorder,
+        animationSpec = tween(200, easing = HarmonyEasing),
         label = "borderColor"
     )
     val bgColor = ComposeColor.Transparent
@@ -827,12 +867,12 @@ internal fun HmTextField(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(fieldShape)
                 .background(bgColor)
                 .border(
-                    width = if (enabled && isFocused) 1.dp else 0.5.dp,
+                    width = if (enabled && isFocused) GlassSize.rim else GlassSize.hairline,
                     color = borderColor,
-                    shape = RoundedCornerShape(10.dp)
+                    shape = fieldShape
                 )
                 .onFocusChanged { isFocused = it.isFocused }
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -884,17 +924,21 @@ fun HmSwitch(
     colors: AppColors = currentColors(),
     enabled: Boolean = LocalConfigEditable.current
 ) {
+    val glass = glassColors()
+    // 轨道：开启 = Glass accent。关闭态用主题的中性填充 —— glass 调色板里的填充全是
+    // 白色系（浅色 56–78% 白），在白卡上做「关闭轨道」会直接看不见；colors.inputBg
+    // 在浅色是浅灰、深色是 6% 白，正好就是这里要的中性玻璃。禁用再压一档。
     val trackColor by animateColorAsState(
         targetValue = when {
             !enabled -> colors.inputBg.copy(alpha = 0.6f)
-            checked -> colors.accent
+            checked -> glass.accent
             else -> colors.inputBg
         },
         animationSpec = tween(220, easing = HarmonyEasing),
         label = "swTrack"
     )
     val trackBorder by animateColorAsState(
-        targetValue = if (checked) colors.accent.copy(alpha = 0.6f) else colors.inputBorder,
+        targetValue = if (checked) glass.accent.copy(alpha = 0.6f) else colors.inputBorder,
         animationSpec = tween(220, easing = HarmonyEasing),
         label = "swBorder"
     )
@@ -905,16 +949,16 @@ fun HmSwitch(
     )
     val thumbColor = when {
         !enabled -> ComposeColor.White.copy(alpha = 0.55f)
-        checked -> ComposeColor.White
-        else -> colors.textTertiary
+        checked -> glass.onAccent
+        else -> glass.textTertiary
     }
     Box(
         modifier = modifier
             .width(50.dp)
             .height(30.dp)
-            .clip(RoundedCornerShape(15.dp))
+            .clip(GlassShapes.capsule)
             .background(trackColor)
-            .border(0.5.dp, trackBorder, RoundedCornerShape(15.dp))
+            .border(GlassSize.hairline, trackBorder, GlassShapes.capsule)
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
     ) {
         Box(
@@ -938,11 +982,16 @@ fun HmToggle(
     hint: String? = null,
     enabled: Boolean = LocalConfigEditable.current
 ) {
+    val rowShape = remember { glassShape(GlassRadius.sm) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
-            .padding(vertical = 4.dp),
+            // 玻璃行材质：glassSurface = 薄玻璃填充 + 顶部高光 + 0.5dp 描边，无背景模糊、
+            // 无阴影（一屏几十行，行行投影会变成一摞浮块）。文字层级/字号/颜色不变。
+            .glassPress(enabled = enabled) { onCheckedChange(!checked) }
+            .clip(rowShape)
+            .glassSurface(radius = GlassRadius.sm, shape = rowShape, intensity = 0.45f)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // weight(1f)：文字区吃掉开关之外的全部宽度，不会被右侧 50dp 开关挤压；

@@ -29,7 +29,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.currentColors
 
 /**
@@ -60,8 +62,11 @@ fun RunningIndicator(
         modifier = modifier
             .fillMaxWidth()
             // 语义色底（运行中 accent / 启动中 warning）+ 玻璃薄雾/描边：状态色不变，只叠材质
-            .background(if (running) colors.accentContainer else colors.warningBg, RoundedCornerShape(14.dp))
-            .glassSurface(radius = 14.dp, intensity = 0.35f)
+            .background(
+                if (running) colors.accentContainer else colors.warningBg,
+                glassShape(GlassRadius.sm)
+            )
+            .glassSurface(radius = GlassRadius.sm, intensity = 0.35f)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

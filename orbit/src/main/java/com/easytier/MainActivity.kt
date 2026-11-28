@@ -422,7 +422,7 @@ class MainActivity : ComponentActivity() {
                             text = tr("好的", "OK"),
                             modifier = Modifier.fillMaxWidth(),
                             rounded = GlassRadius.md,
-                            minHeight = 40.dp,
+                            minHeight = 44.dp,
                             onClick = { importNotice = null }
                         )
                     }
@@ -535,7 +535,7 @@ class MainActivity : ComponentActivity() {
                                     tone = if (paused) GlassButtonTone.PRIMARY
                                     else GlassButtonTone.SECONDARY,
                                     rounded = GlassRadius.md,
-                                    minHeight = 42.dp,
+                                    minHeight = 44.dp,
                                     modifier = Modifier.weight(1f),
                                     onClick = {
                                         paused = !paused
@@ -553,7 +553,7 @@ class MainActivity : ComponentActivity() {
                                     text = "✕ ${tr("清除", "Clear")}",
                                     tone = GlassButtonTone.DANGER,
                                     rounded = GlassRadius.md,
-                                    minHeight = 42.dp,
+                                    minHeight = 44.dp,
                                     modifier = Modifier.weight(1f),
                                     onClick = {
                                         AppLogger.clear()
@@ -568,7 +568,7 @@ class MainActivity : ComponentActivity() {
                                     text = tr("关闭", "Close"),
                                     tone = GlassButtonTone.PRIMARY,
                                     rounded = GlassRadius.md,
-                                    minHeight = 42.dp,
+                                    minHeight = 44.dp,
                                     modifier = Modifier.weight(1f),
                                     onClick = { showLogDialogState = false }
                                 )

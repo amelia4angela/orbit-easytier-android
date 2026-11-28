@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -160,6 +161,8 @@ fun GlassMenu(
                                             onSelect(index)
                                             expanded = false
                                         }
+                                        // 选项行触控高度 ≥ 44dp
+                                        .heightIn(min = 44.dp)
                                         .padding(horizontal = GlassSpace.md, vertical = 11.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {

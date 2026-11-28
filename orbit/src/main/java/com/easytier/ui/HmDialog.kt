@@ -17,12 +17,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,16 +40,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassSize
+import com.easytier.ui.glass.components.milkyGlass
 import com.easytier.ui.glass.effects.glassSurface
-import com.easytier.ui.theme.LocalIsDarkTheme
+import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
 
 /**
  * Orbit 的统一弹窗外壳。
  *
- * 外观：20dp 圆角 + 液态玻璃面板（不透明底 + glassSurface 薄雾/顶部高光/分段描边）
- * + 16sp SemiBold 标题 + 内容区。
+ * 外观：乳白玻璃面板 —— [milkyGlass]（乳白填充深 10→5% / 浅 78→56%，与 ProxyLaunchCard
+ * 同一个值）+ glassSurface 的顶部 specular + 0.5dp 描边 + 弹窗档 24dp 柔和阴影，
+ * 20dp 圆角（GlassRadius.lg）+ 16sp SemiBold 标题 + 内容区。
+ * 背景：Dialog 是独立窗口，既采样不到 GlassSky（没法做真实背景模糊），也自带一层平台
+ * 暗化（窗口 dim），所以这里不再叠第二层 scrim，避免重复压暗。
  * 动效：与 [NodeEditDialog] 一致 —— fadeIn + scaleIn(0.96) 240ms 线性进出，
  * 退出时 200ms；内部 `mounted` 标记让 Dialog 留到退出动画播完。
  *
@@ -65,10 +72,10 @@ fun HmDialog(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = currentColors()
-    val dark = LocalIsDarkTheme.current
-    // Dialog 是独立窗口，无法采样/模糊活动背景 → 用「不透明底 + 玻璃薄雾」保证正文可读。
-    val panelShape = RoundedCornerShape(20.dp)
-    val glassTint = if (dark) 0.55f else 0.28f
+    val glass = glassColors()
+    // Dialog 是独立窗口，无法采样/模糊活动背景 → 只上材质不模糊（milkyGlass）。
+    val panelShape = remember { glassShape(GlassRadius.lg) }
+    val glassTint = if (glass.isDark) 1.15f else 1.0f
 
     // Keep the Dialog mounted until the exit animation finishes.
     var mounted by remember { mutableStateOf(false) }
@@ -98,13 +105,12 @@ fun HmDialog(
                     .widthIn(max = maxWidth)
                     .fillMaxWidth()
                     .padding(horizontal = horizontalPadding)
-                    // 不透明底（带圆角，正文始终可读）+ 玻璃薄雾/顶部高光/分段描边。
-                    .background(colors.surface, panelShape)
-                    .glassSurface(
-                        radius = 20.dp,
+                    // 乳白玻璃面板：乳白填充 + 顶部 specular + 0.5dp 描边 + 24dp 阴影。
+                    .milkyGlass(
+                        radius = GlassRadius.lg,
                         shape = panelShape,
                         intensity = glassTint,
-                        shadowElevation = 6.dp
+                        shadowElevation = 24.dp
                     )
                     .padding(16.dp),
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
@@ -143,7 +149,7 @@ fun HmDialogPrimaryButton(
     onClick: () -> Unit
 ) {
     val colors = currentColors()
-    val shape = RoundedCornerShape(12.dp)
+    val shape = remember { glassShape(GlassRadius.sm) }
     val container: androidx.compose.ui.graphics.Brush = when {
         !enabled -> androidx.compose.ui.graphics.SolidColor(colors.accent.copy(alpha = 0.35f))
         danger -> androidx.compose.ui.graphics.SolidColor(colors.dangerText)
@@ -154,8 +160,10 @@ fun HmDialogPrimaryButton(
             .clip(shape)
             .background(container)
             // 品牌色/危险红底不动，只加一层玻璃高光 + 描边
-            .glassSurface(radius = 12.dp, shape = shape, intensity = 0.45f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.45f)
             .clickable(enabled = enabled) { onClick() }
+            // 无障碍最小触控高度（GlassSize.buttonHeight = 46dp ≥ 44dp）
+            .heightIn(min = GlassSize.buttonHeight)
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -176,14 +184,15 @@ fun HmDialogSecondaryButton(
     onClick: () -> Unit
 ) {
     val colors = currentColors()
-    val shape = RoundedCornerShape(12.dp)
+    val shape = remember { glassShape(GlassRadius.sm) }
     Box(
         modifier = modifier
             // 浅色下 inputBg 是浅灰、深色下是 6% 白 —— 先铺它保证按钮与面板有对比，
             // 再叠玻璃薄雾/顶部高光/描边（不模糊，弹窗里没有可采样的背景）。
             .background(colors.inputBg, shape)
-            .glassSurface(radius = 12.dp, shape = shape, intensity = 1.15f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 1.15f)
             .clickable { onClick() }
+            .heightIn(min = GlassSize.buttonHeight)
             .padding(vertical = 11.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -200,10 +209,12 @@ fun HmDialogTextButton(
     onClick: () -> Unit
 ) {
     val colors = currentColors()
+    val shape = remember { glassShape(GlassRadius.sm) }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(shape)
             .clickable { onClick() }
+            .heightIn(min = 44.dp)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -218,8 +229,3 @@ fun HmDialogTextButton(
 
 /** 单选弹窗的一项：标题 + 可选说明。 */
 data class HmDialogChoice(val label: String, val hint: String? = null)
-
-/**
- * 单选弹窗：每个选项一行（标题 + 说明 + 右侧单选圆点），选中行 accent 高亮。
- * 用于「内存限制」这类需要逐项解释的三选一。
- */

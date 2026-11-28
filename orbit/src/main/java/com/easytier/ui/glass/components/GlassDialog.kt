@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.easytier.ui.HarmonyEasing
 import com.easytier.ui.glass.GlassLevel
 import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassRadius
@@ -89,13 +90,13 @@ fun GlassDialog(
         ) {
             AnimatedVisibility(
                 visible = visible,
-                enter = fadeIn(tween(180)) + scaleIn(
+                enter = fadeIn(GlassMotion.quickEase()) + scaleIn(
                     initialScale = 0.9f,
                     animationSpec = GlassMotion.appear()
                 ),
-                exit = fadeOut(tween(150)) + scaleOut(
+                exit = fadeOut(GlassMotion.quickEase()) + scaleOut(
                     targetScale = 0.96f,
-                    animationSpec = tween(150)
+                    animationSpec = tween(160, easing = HarmonyEasing)
                 )
             ) {
                 GlassSurface(

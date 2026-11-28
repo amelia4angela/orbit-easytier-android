@@ -17,7 +17,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -36,8 +35,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.easytier.AppLogger
 import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassShapes
 import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
@@ -87,7 +89,7 @@ fun HmBackGlyph(
     Box(
         modifier = modifier
             .size(44.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(glassShape(GlassRadius.sm))
             .clickable { onBack() },
         contentAlignment = Alignment.Center
     ) {
@@ -180,6 +182,7 @@ fun GeneralPage(
     onBack: () -> Unit
 ) {
     val colors = currentColors()
+    val restartShape = remember { glassShape(GlassRadius.sm) }
     var logEnabled by remember { mutableStateOf(com.easytier.AppLogger.enabled) }
 
     val memoryLevel = config.memoryLimit.ifEmpty { com.easytier.RuntimeTuning.MEMORY_STANDARD }
@@ -201,7 +204,7 @@ fun GeneralPage(
             modifier = Modifier
                 .fillMaxWidth()
                 // 分组卡片：稳定玻璃材质（高不透明度填充 + 发丝描边，无背景模糊）
-                .glassCard(radius = 12.dp)
+                .glassCard(radius = GlassRadius.sm)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column {
@@ -271,7 +274,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassCard(radius = 12.dp)
+                .glassCard(radius = GlassRadius.sm)
                 .clickable {
                     val next = !logEnabled
                     logEnabled = next
@@ -315,7 +318,7 @@ fun GeneralPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassCard(radius = 12.dp)
+                .glassCard(radius = GlassRadius.sm)
                 .clickable { onRestartCore() }
                 .padding(16.dp)
         ) {
@@ -335,8 +338,10 @@ fun GeneralPage(
                 Spacer(Modifier.width(10.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.statusBad)
+                        // 状态红底 + 玻璃薄雾/描边（语义色不动，只叠材质；与弹窗主按钮同一手法）
+                        .clip(restartShape)
+                        .background(colors.statusBad, restartShape)
+                        .glassSurface(radius = GlassRadius.sm, shape = restartShape, intensity = 0.45f)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
@@ -419,7 +424,7 @@ fun ThemePage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassCard(radius = 14.dp)
+                .glassCard(radius = GlassRadius.md)
                 .padding(vertical = 6.dp, horizontal = 6.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -508,12 +513,12 @@ fun ThemePage(
         }
 
         // 预留位：以后的主题卡片（配色包 / 图标风格）挂在这里
-        // 玻璃材质 + 半透明灰罩，保持「占位、低对比」的观感。
+        // 占位观感只靠内容卡玻璃材质本身（稳定填充 + 发丝描边，低对比），不再叠第二层灰罩
+        // —— 两层材质圆角/填充不一致会在边缘露白。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .glassCard(radius = 14.dp)
-                .background(colors.inputBg.copy(alpha = 0.5f), glassShape(14.dp))
+                .glassCard(radius = GlassRadius.md)
                 .padding(14.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -551,10 +556,11 @@ private fun BgRefreshRow(
     colors: AppColors,
     onClick: () -> Unit
 ) {
+    val glowShape = remember { glassShape(GlassRadius.sm) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .glassCard(radius = 12.dp)
+            .glassCard(radius = GlassRadius.sm)
             .clickable(enabled = !busy) { onClick() }
             .padding(16.dp)
     ) {
@@ -575,8 +581,10 @@ private fun BgRefreshRow(
             Spacer(Modifier.width(10.dp))
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (busy) colors.inputBg else colors.accent)
+                    // 品牌色（或禁用态中性底）+ 玻璃薄雾/描边，与重启按钮同一手法
+                    .clip(glowShape)
+                    .background(if (busy) colors.inputBg else colors.accent, glowShape)
+                    .glassSurface(radius = GlassRadius.sm, shape = glowShape, intensity = 0.45f)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
@@ -598,11 +606,12 @@ private fun ThemeOptionRow(
     colors: AppColors,
     onClick: () -> Unit
 ) {
+    val glass = glassColors()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) colors.accentContainer else Color.Transparent)
+            .clip(glassShape(GlassRadius.sm))
+            .background(if (selected) glass.accentSoft else Color.Transparent)
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -626,11 +635,11 @@ private fun ThemeOptionRow(
         Box(
             modifier = Modifier
                 .size(18.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(GlassShapes.capsule)
                 .border(
                     1.5.dp,
                     if (selected) colors.accent else colors.inputBorder,
-                    RoundedCornerShape(50)
+                    GlassShapes.capsule
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -638,7 +647,7 @@ private fun ThemeOptionRow(
                 Box(
                     modifier = Modifier
                         .size(9.dp)
-                        .clip(RoundedCornerShape(50))
+                        .clip(GlassShapes.capsule)
                         .background(colors.accent)
                 )
             }
@@ -856,6 +865,7 @@ private fun PermissionRow(
     actionLabel: String?,
     onAction: (() -> Unit)?
 ) {
+    val glass = glassColors()
     val statusText = when (status) {
         PermStatus.GRANTED -> T("已授予", "Granted", langZh)
         PermStatus.DENIED -> T("未授予", "Not granted", langZh)
@@ -889,8 +899,8 @@ private fun PermissionRow(
                 )
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(statusBg)
+                        .clip(GlassShapes.capsule)
+                        .background(statusBg, GlassShapes.capsule)
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
@@ -905,10 +915,13 @@ private fun PermissionRow(
             if (actionLabel != null && onAction != null) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.accentContainer)
+                        // 行内动作芯片：胶囊 + 品牌柔色（accentSoft），点击区抬到 44dp
+                        .clip(GlassShapes.capsule)
+                        .background(glass.accentSoft, GlassShapes.capsule)
                         .clickable { onAction() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         actionLabel,

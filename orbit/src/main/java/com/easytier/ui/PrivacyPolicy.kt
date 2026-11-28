@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,8 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassShapes
+import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.glassCard
+import com.easytier.ui.glass.glassColors
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.Dispatchers
@@ -187,6 +189,7 @@ fun PrivacyDocPage(
 ) {
     val ctx = LocalContext.current
     val colors = currentColors()
+    val glass = glassColors()
     if (forced) BackHandler { /* consume：强制门不能用系统返回跳过 */ }
 
     val cached = remember { PrivacyMd.cached(ctx) }
@@ -245,8 +248,8 @@ fun PrivacyDocPage(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 正文面板：内容卡玻璃材质（低强度，长文可读性优先）
-                    .glassCard(radius = 14.dp, intensity = 0.5f)
+                    // 正文面板：内容卡玻璃材质（16dp，长文可读性优先）
+                    .glassCard(radius = GlassRadius.md, intensity = 0.5f)
                     .padding(14.dp)
             ) {
                 MarkdownBody(md = body, colors = colors)
@@ -349,8 +352,10 @@ fun PrivacyDocPage(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .padding(end = 8.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.surfaceDim)
+                            .clip(GlassShapes.capsule)
+                            // 离线角标：胶囊形 + stableFill（相当于不透明底 —— 9sp 小字压玻璃上
+                            // 对比度不够，角标刻意保持够实，不做半透明）
+                            .background(glass.stableFill, GlassShapes.capsule)
                             .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Text(
@@ -372,6 +377,7 @@ fun PrivacyDocPage(
  */
 @Composable
 private fun MarkdownBody(md: String, colors: AppColors) {
+    val glass = glassColors()
     val lines = remember(md) { md.lines().map { it.trimEnd() } }
     val numbered = remember { Regex("^\\d+\\.\\s+.*") }
 
@@ -407,8 +413,9 @@ private fun MarkdownBody(md: String, colors: AppColors) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 6.dp)
-                        .height(0.5.dp)
-                        .background(colors.surfaceBorder)
+                        .height(GlassSize.hairline)
+                        // 分隔线走玻璃 hairline（与关于页一致）
+                        .background(glass.border)
                 )
 
                 // 表格按行原样显示（`| a | b |` → a · b）

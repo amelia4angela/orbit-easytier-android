@@ -12,7 +12,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
@@ -1076,7 +1075,7 @@ private fun ConfigTab(
 
         // ── Apply / Stop Button ──
         // 运行中只剩「停止服务」可用（配置字段锁死，但必须能停）。
-        val ctaShape = RoundedCornerShape(14.dp)
+        val ctaShape = remember { glassShape(GlassRadius.sm) }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1086,7 +1085,7 @@ private fun ConfigTab(
                     else Modifier.background(colors.accentGradient)
                 )
                 // 玻璃高光/描边（品牌渐变与危险色保持，只叠材质）
-                .glassSurface(radius = 14.dp, shape = ctaShape, intensity = 0.5f)
+                .glassSurface(radius = GlassRadius.sm, shape = ctaShape, intensity = 0.5f)
                 .clickable {
                     if (locked) {
                         onStopService()
@@ -1676,6 +1675,7 @@ fun AboutPage(
             }
 
             // 隐私政策入口 —— 关于页最下面的一行蓝字（版本号等内容之后、页尾）
+            val privacyLinkShape = remember { glassShape(GlassRadius.sm) }
             Text(
                 text = "《隐私政策》 / 《Privacy Policy》",
                 color = colors.accentLight,
@@ -1683,8 +1683,10 @@ fun AboutPage(
                 fontWeight = FontWeight.SemiBold,
                 textDecoration = TextDecoration.Underline,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(privacyLinkShape)
                     .clickable { onOpenPrivacy() }
+                    // 无障碍最小触控高度
+                    .heightIn(min = 44.dp)
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             )
         }

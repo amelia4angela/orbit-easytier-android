@@ -55,10 +55,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassShapes
 import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.components.milkyGlass
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.LocalIsDarkTheme
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
@@ -283,13 +285,18 @@ fun FlClashStatusCard(
         isConnected -> colors.accentLight
         else -> colors.surfaceDim
     }
-    val gradient = Brush.linearGradient(
-        listOf(
-            lerp(colors.surface, statusBase, if (isDark) 0.45f else 0.24f),
-            lerp(colors.surface, statusAccent, if (isDark) 0.18f else 0.10f)
+    val gradient = remember(colors, statusBase, statusAccent, isDark) {
+        Brush.linearGradient(
+            listOf(
+                lerp(colors.surface, statusBase, if (isDark) 0.45f else 0.24f),
+                lerp(colors.surface, statusAccent, if (isDark) 0.18f else 0.10f)
+            )
         )
-    )
-    val cardShape = RoundedCornerShape(20.dp)
+    }
+    // 圆角走 GlassRadius 阶梯（卡片 lg / 内嵌块 sm / 圆形图标 md≈18dp），并 remember 避免每帧重建
+    val cardShape = remember { glassShape(GlassRadius.lg) }
+    val blobShape = remember { glassShape(GlassRadius.md) }
+    val statShape = remember { glassShape(GlassRadius.sm) }
     // 玻璃强度：深色下给足高光，浅色下压低一点，别把状态色洗白。
     val glassIntensity = if (isDark) 0.55f else 0.22f
 
@@ -306,7 +313,7 @@ fun FlClashStatusCard(
             .clip(cardShape)
             .background(gradient)
             // 玻璃高光/描边叠在状态色之上；不模糊 —— 卡片不采样背景，避免与页面玻璃嵌套模糊
-            .glassSurface(radius = 20.dp, shape = cardShape, intensity = glassIntensity)
+            .glassSurface(radius = GlassRadius.lg, shape = cardShape, intensity = glassIntensity)
             .padding(16.dp)
     ) {
         Row(
@@ -321,7 +328,7 @@ fun FlClashStatusCard(
                     Spacer(Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(50))
+                            .clip(GlassShapes.capsule)
                             .background(
                                 if (isDark) Color.Black.copy(alpha = 0.22f)
                                 else Color.White.copy(alpha = 0.55f)
@@ -391,7 +398,7 @@ fun FlClashStatusCard(
                 modifier = Modifier
                     .size(72.dp)
                     .scale(btnScale)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(blobShape)
                     .background(Color.Transparent)
                     .clickable(
                         onClick = {
@@ -441,7 +448,7 @@ fun FlClashStatusCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(statShape)
                 .background(
                     if (isDark) Color.Black.copy(alpha = 0.22f)
                     else Color.Black.copy(alpha = 0.055f)
@@ -571,6 +578,7 @@ private fun SpeedWaveCard(
     val wave = remember(samples, canvasSize) {
         buildWavePaths(samples, canvasSize.width.toFloat(), canvasSize.height.toFloat())
     }
+    val glass = glassColors()
 
     Column(
         modifier = modifier
@@ -578,7 +586,7 @@ private fun SpeedWaveCard(
             // 顶部「流量总量」11sp 灰字 + 数值，中间波形，底部「当前网速」19sp 大字。
             .milkyGlass(
                 radius = GlassRadius.md,
-                intensity = if (glassColors().isDark) 1.15f else 1.0f,
+                intensity = if (glass.isDark) 1.15f else 1.0f,
                 shadowElevation = 18.dp
             )
             .padding(12.dp)
@@ -610,7 +618,7 @@ private fun SpeedWaveCard(
         ) {
             // Very light baseline keeps an empty chart reading as a chart.
             drawLine(
-                color = colors.surfaceBorder.copy(alpha = 0.55f),
+                color = glass.border,
                 start = Offset(0f, size.height - 0.5f),
                 end = Offset(size.width, size.height - 0.5f),
                 strokeWidth = 1.dp.toPx()
@@ -682,7 +690,7 @@ private fun SpeedWaveCard(
 fun Modifier.flGlassCard(
     colors: com.easytier.ui.theme.AppColors,
     radius: androidx.compose.ui.unit.Dp = 18.dp
-): Modifier = this.glassCard(radius = radius, intensity = 0.18f, shadowElevation = 6.dp)
+): Modifier = this.glassCard(radius = radius, intensity = 0.18f, shadowElevation = 8.dp)
 
 
 /**
@@ -757,14 +765,16 @@ fun NodeEditDialog(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(50))
+                        .clip(GlassShapes.capsule)
                         .background(if (selected) colors.accent else colors.inputBg)
                         .border(
                             0.5.dp,
                             if (selected) colors.accent else colors.inputBorder,
-                            RoundedCornerShape(50)
+                            GlassShapes.capsule
                         )
                         .clickable { protocol = proto }
+                        // 无障碍最小触控高度
+                        .heightIn(min = 44.dp)
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {

@@ -16,7 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -808,6 +807,9 @@ private fun SectionLabel(text: String, colors: AppColors) {
 
 /**
  * Small square glyph button used for the per-node edit / delete actions.
+ *
+ * 触控区抬到 44dp（无障碍最小），可见的 ✎ / 🗑 仍是 32dp 居中；
+ * 节点行里的地址文本是 weight(1f) + maxLines=1，只会截断不会被挤坏。
  */
 @Composable
 private fun NodeActionButton(
@@ -818,12 +820,17 @@ private fun NodeActionButton(
 ) {
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+            .clip(glassShape(GlassRadius.sm))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(glyph, color = if (enabled) tint else tint.copy(alpha = 0.35f), fontSize = 14.sp)
+        Box(
+            modifier = Modifier.size(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(glyph, color = if (enabled) tint else tint.copy(alpha = 0.35f), fontSize = 14.sp)
+        }
     }
 }
 
@@ -966,7 +973,7 @@ fun HmSwitch(
                 .align(Alignment.CenterStart)
                 .padding(start = thumbPos)
                 .size(24.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(GlassShapes.capsule)
                 .background(thumbColor)
         )
     }

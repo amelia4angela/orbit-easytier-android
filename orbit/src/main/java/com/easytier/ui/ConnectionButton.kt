@@ -50,19 +50,20 @@ fun ControlFAB(
     // 与「应用并启动」CTA、GlassButton 同一手法。按压交回 glassPress（GlassMotion spring
     // 0.955），取代原来 150ms 的 0.85 scale tween。
     val fabShape = GlassShapes.capsule
+    // 渐变 remembered：状态切换才重建，避免每帧重新分配 Brush
+    val fabBrush = remember(isConnected, colors) {
+        if (isConnected) {
+            Brush.radialGradient(listOf(colors.statusBad, colors.statusBad.copy(alpha = 0.8f)))
+        } else {
+            Brush.radialGradient(listOf(colors.accentLight, colors.accent.copy(alpha = 0.9f)))
+        }
+    }
     Box(
         modifier = modifier
             .size(56.dp)
             .glassPress(onClick = onClick)
             .clip(fabShape)
-            .background(
-                if (isConnected) Brush.radialGradient(
-                    listOf(colors.statusBad, colors.statusBad.copy(alpha = 0.8f))
-                ) else Brush.radialGradient(
-                    listOf(colors.accentLight, colors.accent.copy(alpha = 0.9f))
-                ),
-                fabShape
-            )
+            .background(fabBrush, fabShape)
             .glassSurface(radius = 28.dp, shape = fabShape, intensity = 0.5f),
         contentAlignment = Alignment.Center
     ) {

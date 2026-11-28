@@ -25,6 +25,7 @@ import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.components.glassCard
 import com.easytier.ui.glass.components.milkyGlass
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.*
 
 data class PeerInfoItem(
@@ -137,7 +138,7 @@ private fun PeerRow(item: PeerInfoItem, colors: AppColors, langZh: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(glassShape(GlassRadius.sm))
             .clickable { detailOpen = !detailOpen }
     ) {
         Row(
@@ -150,7 +151,8 @@ private fun PeerRow(item: PeerInfoItem, colors: AppColors, langZh: Boolean) {
                 item.latencyUs > 0 && item.latencyUs < 100_000 -> colors.statusGood
                 item.latencyUs in 100_000..499_999 -> colors.statusWarn
                 item.latencyUs > 0 -> colors.statusBad
-                else -> Color(0xFF6B7280)
+                // 未知延迟 = 中性灰，走主题三级文字色（不再硬编码 0xFF6B7280）
+                else -> colors.textTertiary
             }
             Box(
                 modifier = Modifier

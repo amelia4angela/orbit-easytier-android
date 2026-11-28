@@ -253,7 +253,7 @@ class ConfigEditActivity : AppCompatActivity() {
                             leadingIcon = Icons.Default.FileOpen,
                             tone = GlassButtonTone.SECONDARY,
                             rounded = GlassRadius.md,
-                            minHeight = 40.dp,
+                            minHeight = 44.dp,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             onClick = { onImport() }
                         )
@@ -263,7 +263,7 @@ class ConfigEditActivity : AppCompatActivity() {
                             leadingIcon = Icons.Default.Save,
                             tone = GlassButtonTone.SECONDARY,
                             rounded = GlassRadius.md,
-                            minHeight = 40.dp,
+                            minHeight = 44.dp,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             onClick = {
                                 exportTomlContent = TomlUtils.buildToml(configState)
@@ -277,7 +277,7 @@ class ConfigEditActivity : AppCompatActivity() {
                             leadingIcon = Icons.Default.Share,
                             tone = GlassButtonTone.SECONDARY,
                             rounded = GlassRadius.md,
-                            minHeight = 40.dp,
+                            minHeight = 44.dp,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             onClick = { shareToml() }
                         )
@@ -287,7 +287,7 @@ class ConfigEditActivity : AppCompatActivity() {
                             leadingIcon = Icons.Default.Check,
                             tone = GlassButtonTone.PRIMARY,
                             rounded = GlassRadius.md,
-                            minHeight = 40.dp,
+                            minHeight = 44.dp,
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                             onClick = {
                                 onSaveConfig(configName, configState)
@@ -396,7 +396,7 @@ class ConfigEditActivity : AppCompatActivity() {
                     text = tr("关闭", "Close"),
                     tone = GlassButtonTone.SECONDARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = { showNewConfigDialog = false }
                 )
@@ -404,7 +404,7 @@ class ConfigEditActivity : AppCompatActivity() {
                     text = tr("保存", "Save"),
                     tone = GlassButtonTone.PRIMARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = {
                         val name = newName.trim()
@@ -446,7 +446,7 @@ class ConfigEditActivity : AppCompatActivity() {
                     text = tr("关闭", "Close"),
                     tone = GlassButtonTone.SECONDARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = { showDeleteConfirm = false }
                 )
@@ -454,7 +454,7 @@ class ConfigEditActivity : AppCompatActivity() {
                     text = tr("删除", "Delete"),
                     tone = GlassButtonTone.DANGER,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = {
                         onDeleteConfig(configName)
@@ -526,7 +526,7 @@ class ConfigEditActivity : AppCompatActivity() {
                 text = tr("好的", "OK"),
                 modifier = Modifier.fillMaxWidth(),
                 rounded = GlassRadius.sm,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 onClick = {
                     val applyName = notice?.applyName
                     importNotice.value = null

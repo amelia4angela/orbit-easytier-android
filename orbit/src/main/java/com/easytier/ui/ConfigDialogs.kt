@@ -81,6 +81,8 @@ fun ConfigManagerDialog(
                         .clip(glassShape(GlassRadius.sm))
                         .background(if (selected) glass.accentSoft else Color.Transparent)
                         .clickable { onSelect(index) }
+                        // 选项行触控高度 ≥ 44dp
+                        .heightIn(min = 44.dp)
                         .padding(horizontal = 10.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -103,7 +105,7 @@ fun ConfigManagerDialog(
                 text = T("删除", "Delete", langZh),
                 tone = GlassButtonTone.SECONDARY,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = onDelete
             )
@@ -111,7 +113,7 @@ fun ConfigManagerDialog(
                 text = T("新建…", "New…", langZh),
                 tone = GlassButtonTone.PRIMARY,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = onNew
             )
@@ -165,7 +167,7 @@ fun DeleteConfigConfirmDialog(
                 text = T("关闭", "Close", langZh),
                 tone = GlassButtonTone.SECONDARY,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss
             )
@@ -173,7 +175,7 @@ fun DeleteConfigConfirmDialog(
                 text = T("删除", "Delete", langZh),
                 tone = GlassButtonTone.DANGER,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = { if (display.isNotEmpty()) onConfirm(display) }
             )
@@ -230,7 +232,7 @@ fun NewConfigDialog(
                     text = T("返回", "Back", langZh),
                     tone = GlassButtonTone.SECONDARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = { askOverwrite = false }
                 )
@@ -238,7 +240,7 @@ fun NewConfigDialog(
                     text = T("覆盖", "Overwrite", langZh),
                     tone = GlassButtonTone.PRIMARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = { onSave(trimmed) }
                 )
@@ -261,7 +263,7 @@ fun NewConfigDialog(
                     text = T("关闭", "Close", langZh),
                     tone = GlassButtonTone.SECONDARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     onClick = onDismiss
                 )
@@ -269,7 +271,7 @@ fun NewConfigDialog(
                     text = T("保存", "Save", langZh),
                     tone = GlassButtonTone.PRIMARY,
                     rounded = GlassRadius.md,
-                    minHeight = 40.dp,
+                    minHeight = 44.dp,
                     modifier = Modifier.weight(1f),
                     enabled = trimmed.isNotEmpty(),
                     onClick = {
@@ -315,7 +317,7 @@ fun ConfigServerDialog(
                 text = T("关闭", "Close", langZh),
                 tone = GlassButtonTone.SECONDARY,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss
             )
@@ -323,7 +325,7 @@ fun ConfigServerDialog(
                 text = T("获取", "Fetch", langZh),
                 tone = GlassButtonTone.PRIMARY,
                 rounded = GlassRadius.md,
-                minHeight = 40.dp,
+                minHeight = 44.dp,
                 modifier = Modifier.weight(1f),
                 onClick = { onFetch(url) }
             )

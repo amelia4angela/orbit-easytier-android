@@ -104,10 +104,23 @@ object IpMask {
             .apply()
     }
 
-    /** `null` 进 `null` 出；短到无法「首尾各留」时只留首字符。 */
+    /**
+     * `null` 进 `null` 出。
+     *
+     * IPv4 按「段」脱敏（而不是按字符），否则 `8.8.8.8` 会变成难看的 `8.8....8`：
+     *   113.5.6.60 → 113...60     8.8.8.8 → 8...8     1.81.129.30 → 1...30
+     * IPv6 或其它形式退回按字符：240e:359:…:e15 → 240...15
+     */
     fun mask(ip: String?): String? {
         val value = ip?.trim().orEmpty()
         if (value.isEmpty()) return ip
+        if (value.contains('.') && !value.contains(':')) {
+            val parts = value.split('.')
+            if (parts.size == 4) {
+                val last = parts[3]
+                return parts[0] + "..." + if (last.length > 2) last.takeLast(2) else last
+            }
+        }
         if (value.length <= 6) return value.take(1) + "..."
         return value.take(3) + "..." + value.takeLast(2)
     }

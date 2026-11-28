@@ -21,19 +21,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.lifecycleScope
-import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -49,9 +46,22 @@ import com.easytier.jni.EasyTierManager
 import com.easytier.jni.ipv4IntToString
 import com.easytier.vpn.EasyTierVpnService
 import com.easytier.ui.*
+import com.easytier.ui.glass.GlassMotion
+import com.easytier.ui.glass.GlassRadius
+import com.easytier.ui.glass.GlassSpace
 import com.easytier.ui.glass.GlassTheme
-import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.components.GlassButton
+import com.easytier.ui.glass.components.GlassButtonTone
+import com.easytier.ui.glass.components.GlassDialog
+import com.easytier.ui.glass.components.milkyGlass
+import com.easytier.ui.glass.glassColors
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.glass.rememberGlassLevel
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import com.easytier.ui.theme.EasyTierTheme
 import org.json.JSONArray
 import org.json.JSONObject
@@ -130,6 +140,11 @@ class MainActivity : ComponentActivity() {
     private var deleteConfirmName by mutableStateOf<String?>(null)
     /** 待写入的 .toml 内容（SAF 选完位置后才写） */
     private var pendingExportToml by mutableStateOf<String?>(null)
+    /**
+     * 导入提示弹窗（原来用 `android.app.AlertDialog.Builder` 弹平台 Material 弹窗）。
+     * 非 null 表示打开；内容/文案由导入流程决定，玻璃壳见 setContent 里的 NoticeDialog。
+     */
+    private var importNotice by mutableStateOf<ImportNotice?>(null)
     private var peerInfoExpanded by mutableStateOf(false)
     private var currentConfigName by mutableStateOf("default")
     private var configChanged by mutableStateOf(false)   // tracks unsaved changes
@@ -384,9 +399,38 @@ class MainActivity : ComponentActivity() {
                     onDismiss = { configServerVisible = false }
                 )
 
+                // ── 导入结果 / 无法识别：玻璃提示弹窗（原 android.app.AlertDialog）──
+                // 退出动画期间 importNotice 已被清空，所以正文/标题取「最后一次非空值」。
+                run {
+                    val noticeNow = importNotice
+                    var lastNotice by remember { mutableStateOf<ImportNotice?>(null) }
+                    LaunchedEffect(noticeNow) { if (noticeNow != null) lastNotice = noticeNow }
+                    val notice = noticeNow ?: lastNotice
+                    val noticeGlass = glassColors()
+                    GlassDialog(
+                        visible = noticeNow != null,
+                        onDismiss = { importNotice = null },
+                        title = notice?.title
+                    ) {
+                        Text(
+                            text = notice?.message ?: "",
+                            color = noticeGlass.textSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                        GlassButton(
+                            text = tr("好的", "OK"),
+                            modifier = Modifier.fillMaxWidth(),
+                            rounded = GlassRadius.md,
+                            minHeight = 40.dp,
+                            onClick = { importNotice = null }
+                        )
+                    }
+                }
+
                 // Log dialog — Compose version with auto-scroll + pause
                 if (showLogDialogState) {
-                    val colors = currentColors()
+                    val glass = glassColors()
                     var logContent by remember { mutableStateOf(AppLogger.getLatestLines(120)) }
                     val scrollState = rememberScrollState()
                     val coroutineScope = rememberCoroutineScope()
@@ -411,151 +455,125 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // 弹性浮现：Dialog 是独立窗口，进/出场各一次 160ms 淡入 + spring 放大。
+                    val appeared = remember {
+                        MutableTransitionState(false).apply { targetState = true }
+                    }
+
                     Dialog(
                         onDismissRequest = { showLogDialogState = false },
                         properties = DialogProperties(usePlatformDefaultWidth = false)
                     ) {
-                        Box(
+                        AnimatedVisibility(
+                            visibleState = appeared,
+                            enter = fadeIn(tween(160)) +
+                                scaleIn(initialScale = 0.94f, animationSpec = GlassMotion.appear())
+                        ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth(0.92f)
-                                // 自绘日志弹窗：不透明底保证正文可读 + 玻璃薄雾/顶部高光/分段描边
-                                // （Dialog 是独立窗口，没有可采样的 GlassSky → 只上材质，不模糊）
-                                .background(colors.surface, RoundedCornerShape(20.dp))
-                                .glassSurface(
-                                    radius = 20.dp,
-                                    shape = RoundedCornerShape(20.dp),
-                                    intensity = if (isSystemInDarkTheme()) 0.55f else 0.28f,
-                                    shadowElevation = 6.dp
+                                // 乳白玻璃面板（与 ProxyLaunchCard 同一套填充）：Dialog 没有可采样的
+                                // GlassSky，所以只上材质不模糊 —— milkyGlass = 阴影 + 乳白底 + 高光/描边。
+                                .milkyGlass(
+                                    radius = GlassRadius.lg,
+                                    intensity = if (glass.isDark) 1.15f else 1.0f,
+                                    shadowElevation = 24.dp
                                 )
+                                .padding(GlassSpace.lg),
+                            verticalArrangement = Arrangement.spacedBy(GlassSpace.md)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                // Title row: icon + title + pause indicator
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            // Title row: icon + title + pause indicator
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "≡ ${tr("日志", "Log")}",
+                                    color = glass.textPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (paused) {
                                     Text(
-                                        "≡ ${tr("日志", "Log")}",
-                                        color = colors.textPrimary,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    if (paused) {
-                                        Text(
-                                            "⏸ ${tr("已暂停", "Paused")}",
-                                            color = colors.warning,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
-
-                                // Log content
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(400.dp)
-                                        // 日志正文面板：等宽正文底色 + 玻璃薄雾/描边
-                                        .background(
-                                            if (isSystemInDarkTheme()) Color(0xFF1A1A2E) else Color(0xFFF5F3FF),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                        .glassSurface(radius = 12.dp, intensity = 0.35f)
-                                        .verticalScroll(scrollState)
-                                        .padding(12.dp)
-                                ) {
-                                    Text(
-                                        logContent,
-                                        color = colors.textSecondary,
+                                        "⏸ ${tr("已暂停", "Paused")}",
+                                        color = glass.textTertiary,
                                         fontSize = 11.sp,
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                        fontWeight = FontWeight.Medium
                                     )
-                                }
-
-                                Spacer(Modifier.height(12.dp))
-
-                                // Action buttons: Pause/Resume | Clear | Close
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    // Pause / Resume
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(
-                                                if (paused) colors.accent else colors.warningBg,
-                                                RoundedCornerShape(10.dp)
-                                            )
-                                            .glassSurface(radius = 10.dp, intensity = 0.4f)
-                                            .clickable {
-                                                paused = !paused
-                                                if (!paused) {
-                                                    // Resumed: refresh + scroll to bottom immediately
-                                                    logContent = AppLogger.getLatestLines(120)
-                                                    coroutineScope.launch {
-                                                        scrollState.scrollTo(scrollState.maxValue)
-                                                    }
-                                                }
-                                            }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            if (paused) "▶ ${tr("继续", "Resume")}"
-                                            else "⏸ ${tr("暂停", "Pause")}",
-                                            color = if (paused) Color.White else colors.warning,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                    // Clear
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.dangerBg, RoundedCornerShape(10.dp))
-                                            .glassSurface(radius = 10.dp, intensity = 0.4f)
-                                            .clickable {
-                                                AppLogger.clear()
-                                                logContent = ""
-                                                coroutineScope.launch {
-                                                    scrollState.scrollTo(0)
-                                                }
-                                            }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            "✕ ${tr("清除", "Clear")}",
-                                            color = colors.dangerText,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                    // Close
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.accentGradient, RoundedCornerShape(10.dp))
-                                            .glassSurface(radius = 10.dp, intensity = 0.45f)
-                                            .clickable { showLogDialogState = false }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            tr("关闭", "Close"),
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
                                 }
                             }
+
+                            // Log content —— 玻璃面板内嵌一块 stableFill 不透明区：
+                            // 等宽正文永远压在不透光材质上，对比度不受背景影响。
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(400.dp)
+                                    .clip(glassShape(GlassRadius.sm))
+                                    .background(glass.stableFill, glassShape(GlassRadius.sm))
+                                    .verticalScroll(scrollState)
+                                    .padding(GlassSpace.md)
+                            ) {
+                                Text(
+                                    logContent,
+                                    color = glass.textSecondary,
+                                    fontSize = 11.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                            }
+
+                            // Action buttons: Pause/Resume | Clear | Close
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(GlassSpace.sm)
+                            ) {
+                                // Pause / Resume —— 暂停时「继续」是主操作
+                                GlassButton(
+                                    text = if (paused) "▶ ${tr("继续", "Resume")}"
+                                    else "⏸ ${tr("暂停", "Pause")}",
+                                    tone = if (paused) GlassButtonTone.PRIMARY
+                                    else GlassButtonTone.SECONDARY,
+                                    rounded = GlassRadius.md,
+                                    minHeight = 42.dp,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        paused = !paused
+                                        if (!paused) {
+                                            // Resumed: refresh + scroll to bottom immediately
+                                            logContent = AppLogger.getLatestLines(120)
+                                            coroutineScope.launch {
+                                                scrollState.scrollTo(scrollState.maxValue)
+                                            }
+                                        }
+                                    }
+                                )
+                                // Clear
+                                GlassButton(
+                                    text = "✕ ${tr("清除", "Clear")}",
+                                    tone = GlassButtonTone.DANGER,
+                                    rounded = GlassRadius.md,
+                                    minHeight = 42.dp,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        AppLogger.clear()
+                                        logContent = ""
+                                        coroutineScope.launch {
+                                            scrollState.scrollTo(0)
+                                        }
+                                    }
+                                )
+                                // Close
+                                GlassButton(
+                                    text = tr("关闭", "Close"),
+                                    tone = GlassButtonTone.PRIMARY,
+                                    rounded = GlassRadius.md,
+                                    minHeight = 42.dp,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { showLogDialogState = false }
+                                )
+                            }
+                        }
                         }
                     }
                 }
@@ -1697,11 +1715,11 @@ class MainActivity : ComponentActivity() {
             val result = TomlUtils.parseLenient(text)
             if (!result.recognized) {
                 AppLogger.w("MainActivity", "TOML import: nothing recognized in $fileName")
-                AlertDialog.Builder(this)
-                    .setTitle(tr("无法识别的格式", "Unrecognized format"))
-                    .setMessage(importFailureMessage(fileName, result))
-                    .setPositiveButton(tr("好的", "OK"), null)
-                    .show()
+                // 玻璃提示弹窗（原来 android.app.AlertDialog）；「好的」= 关掉弹窗。
+                importNotice = ImportNotice(
+                    title = tr("无法识别的格式", "Unrecognized format"),
+                    message = importFailureMessage(fileName, result)
+                )
                 return
             }
 
@@ -1737,11 +1755,10 @@ class MainActivity : ComponentActivity() {
             sb.append(if (langZh) "\n提示:\n" else "\nNotes:\n")
             r.warnings.forEach { sb.append("• ").append(it).append('\n') }
         }
-        AlertDialog.Builder(this)
-            .setTitle(tr("导入结果", "Import result"))
-            .setMessage(sb.toString().trim())
-            .setPositiveButton(tr("好的", "OK"), null)
-            .show()
+        importNotice = ImportNotice(
+            title = tr("导入结果", "Import result"),
+            message = sb.toString().trim()
+        )
     }
 
     private fun importFailureMessage(fileName: String, r: ImportResult): String {
@@ -1812,7 +1829,10 @@ class MainActivity : ComponentActivity() {
     }
 
     // ═══════════════════════════════════════════════
-    //  Dialogs (kept as AlertDialog)
+    //  Dialogs
+    //  配置管理器 / 新建 / 删除确认 / 配置服务器 → ui/ConfigDialogs.kt（玻璃壳）
+    //  日志 → setContent 内的乳白玻璃面板
+    //  导入结果 / 无法识别 → importNotice + 玻璃提示弹窗
     // ═══════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════
@@ -1827,3 +1847,10 @@ class MainActivity : ComponentActivity() {
         else -> "?"
     }
 }
+
+/**
+ * 导入提示弹窗内容（玻璃提示框的数据）：标题 + 正文。
+ * 只是把原来 `AlertDialog.Builder(...).setTitle().setMessage()` 的两段文案搬到状态里，
+ * 显隐与回调整体由 MainActivity 控制。
+ */
+private data class ImportNotice(val title: String, val message: String)

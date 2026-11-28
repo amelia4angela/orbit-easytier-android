@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -56,6 +57,7 @@ import com.easytier.ui.glass.effects.GlassSky
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.rememberGlassLevel
+import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -365,12 +367,17 @@ fun MainScreen(
                             AnimatedContent(
                                 targetState = currentTab,
                                 transitionSpec = {
-                                    (fadeIn(tween(300, easing = HarmonyEasing)) +
-                                        slideInHorizontally(initialOffsetX = { it / 6 }))
-                                        .togetherWith(
-                                            fadeOut(tween(200, easing = HarmonyEasing)) +
-                                                slideOutHorizontally(targetOffsetX = { -it / 6 })
-                                        )
+                                    // tab 间切换：轻微淡入 + 位移，240ms / HarmonyEasing（≤260ms）。
+                                    // 方向随 tab 序号：往右的 tab 从右侧进、向左退出，反之镜像。
+                                    val forward = targetState.ordinal >= initialState.ordinal
+                                    val dir = if (forward) 1 else -1
+                                    (
+                                        fadeIn(tween(240, easing = HarmonyEasing)) +
+                                            slideInHorizontally(tween(240, easing = HarmonyEasing)) { it / 8 * dir }
+                                        ).togetherWith(
+                                        fadeOut(tween(180, easing = HarmonyEasing)) +
+                                            slideOutHorizontally(tween(240, easing = HarmonyEasing)) { -it / 12 * dir }
+                                    )
                                 },
                                 label = "tabTransition"
                             ) { tab ->
@@ -529,7 +536,8 @@ fun MainScreen(
  * 改由 [GlassSky] 绘制 —— 这样悬浮玻璃采样/模糊到的就是屏幕上真实看到的那层背景，
  * 而且背景只画一次，不会每个玻璃件再叠一层模糊。
  */
-private fun DrawScope.drawOrbitBackdrop(colors: AppColors, canvasSize: Size) {
+/** 见上：`ConfigEditActivity` 复用同一套页面底色（internal 共享，行为不变）。 */
+internal fun DrawScope.drawOrbitBackdrop(colors: AppColors, canvasSize: Size) {
     drawRect(
         brush = Brush.verticalGradient(
             listOf(colors.bgStart, colors.bgMid, colors.bgEnd),
@@ -687,25 +695,28 @@ private fun BottomNavigationBar(
     langZh: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val colors = currentColors()
-    val shape = RoundedCornerShape(24.dp)
-    val indicatorShape = RoundedCornerShape(16.dp)
+    val glass = glassColors()
+    // 常驻组件：形状/颜色/画笔只算一次，别在每帧重新分配（性能要求）。
+    val barShape = remember { glassShape(GlassRadius.xxl) }              // 悬浮胶囊 28dp
+    val indicatorShape = remember { glassShape(GlassRadius.lg) }         // 选中底 20dp
+    val indicatorFill = glass.accentSoft                                 // 淡蓝，不压住乳白玻璃
+    val indicatorRim = remember(glass.accent) { glass.accent.copy(alpha = 0.26f) }
 
-    val items = listOf(
-        Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
-        Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
-        Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
-        Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
-    )
+    val items = remember(langZh) {
+        listOf(
+            Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
+            Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
+            Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
+            Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
+        )
+    }
     val selectedIndex = items.indexOfFirst { it.third == currentTab }.coerceAtLeast(0)
 
-    // Floating indicator (AnimatedBottomBar style): animate the *slot* (0f..n-1)
-    // instead of each pill's alpha, then derive the offset from the tab width.
-    // The value is read inside the offset lambda, so sliding is layout-only.
-    // 视觉层改造：缓动换 GlassMotion 的 spring（无回弹过冲），节奏仍是「贴着手指走」。
+    // 选中指示器：动画的是 *槽位*（0f..n-1），位移由 tab 宽度推出 —— 值在 offset lambda
+    // 里读取，所以滑动只走 layout，不触发重组。spring 近临界阻尼（无回弹抖动）。
     val slot by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = GlassMotion.settleSpring(),
+        animationSpec = GlassMotion.indicatorSpring,
         label = "navSlot"
     )
 
@@ -714,14 +725,16 @@ private fun BottomNavigationBar(
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        // ── 液态玻璃导航条 ────────────────────────────────────────────
-        // 悬浮胶囊 + 背景模糊（HIGH/BALANCED 模糊、LITE 退化成半透明填充）+ 玻璃描边。
+        // ── 悬浮乳白玻璃胶囊 ────────────────────────────────────────────
+        // GlassSurface 自带**唯一**的一层背景模糊（HIGH/BALANCED；LITE 退化成半透明填充），
+        // intensity 上调一档让填充更实（对齐 ProxyLaunchCard 的乳白观感），柔和外阴影 + 玻璃描边。
         // tab 数量 / 页名 / 点击回调全部沿用上面的 items 与 onTabSelected。
         GlassSurface(
             modifier = Modifier.fillMaxWidth(),
-            radius = 24.dp,
-            shape = shape,
-            shadowElevation = 12.dp,
+            radius = GlassRadius.xxl,
+            shape = barShape,
+            intensity = if (glass.isDark) 1.25f else 1.05f,
+            shadowElevation = 18.dp,
             contentPadding = PaddingValues(6.dp)
         ) {
             BoxWithConstraints(
@@ -730,16 +743,18 @@ private fun BottomNavigationBar(
                     .height(48.dp)
             ) {
                 val itemWidth = maxWidth / items.size
-                val itemWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { itemWidth.toPx() }
+                val itemWidthPx = with(LocalDensity.current) { itemWidth.toPx() }
 
-                // Sliding block sits behind the items and moves under the tap.
+                // 选中指示器：滑动胶囊（spring），淡蓝填充 + 一条淡淡 accent 描边。
                 Box(
                     modifier = Modifier
-                        .offset { androidx.compose.ui.unit.IntOffset((itemWidthPx * slot).roundToInt(), 0) }
+                        .offset { IntOffset((itemWidthPx * slot).roundToInt(), 0) }
                         .width(itemWidth)
                         .fillMaxHeight()
+                        .padding(horizontal = 5.dp)
                         .clip(indicatorShape)
-                        .background(colors.accent)
+                        .background(indicatorFill, indicatorShape)
+                        .border(0.5.dp, indicatorRim, indicatorShape)
                 )
 
                 Row(
@@ -749,25 +764,16 @@ private fun BottomNavigationBar(
                 ) {
                     items.forEachIndexed { index, (icon, label, tab) ->
                         val isActive = index == selectedIndex
-                        // Delay the white tint until the indicator has slid in,
-                        // otherwise the label flashes white-on-white mid-travel.
-                        var lit by remember { mutableStateOf(isActive) }
-                        LaunchedEffect(isActive) {
-                            if (isActive) {
-                                delay(180L)
-                                lit = true
-                            } else {
-                                lit = false
-                            }
-                        }
+                        // 图标 + 文字同时变色（选中 accent / 未选中次级灰）——
+                        // 指示器是淡蓝而不是实心蓝，所以滑动途中不需要「延迟点亮」也不会白压白。
                         val tint by animateColorAsState(
-                            targetValue = if (lit) Color.White else colors.textTertiary,
-                            animationSpec = tween(180, easing = HarmonyEasing),
+                            targetValue = if (isActive) glass.accent else glass.textTertiary,
+                            animationSpec = GlassMotion.quickEase(),
                             label = "navTint"
                         )
                         val iconScale by animateFloatAsState(
-                            targetValue = if (isActive) 1.08f else 1f,
-                            animationSpec = tween(380, easing = HarmonyEasing),
+                            targetValue = if (isActive) 1.06f else 1f,
+                            animationSpec = GlassMotion.spatial,
                             label = "navIconScale"
                         )
 
@@ -776,7 +782,10 @@ private fun BottomNavigationBar(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(indicatorShape)
-                                .clickable { onTabSelected(tab) },
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onTabSelected(tab) },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(

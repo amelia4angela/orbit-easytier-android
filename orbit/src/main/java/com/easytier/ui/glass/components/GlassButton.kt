@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -72,8 +74,11 @@ fun GlassButton(
     enabled: Boolean = true,
     level: GlassLevel = LocalGlassLevel.current,
     leading: String? = null,
+    /** Optional vector icon shown before the label (toolbar/dialog actions). */
+    leadingIcon: ImageVector? = null,
     rounded: Dp = GlassRadius.md,
-    minHeight: Dp = GlassSize.buttonHeight
+    minHeight: Dp = GlassSize.buttonHeight,
+    contentPadding: PaddingValues = GlassPaddings.button
 ) {
     val colors = glassColors()
     val perf = rememberGlassPerformance(level)
@@ -139,7 +144,7 @@ fun GlassButton(
                 enabled = enabled,
                 onClick = onClick
             )
-            .padding(GlassPaddings.button),
+            .padding(contentPadding),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -148,6 +153,14 @@ fun GlassButton(
         ) {
             if (leading != null) {
                 Text(leading, color = labelColor, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
+            if (leadingIcon != null) {
+                androidx.compose.material3.Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = labelColor,
+                    modifier = Modifier.size(GlassSize.iconSm)
+                )
             }
             Text(
                 text = text,

@@ -47,6 +47,7 @@ import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.currentColors
+import com.easytier.ui.theme.motionMs
 import kotlinx.coroutines.delay
 
 /**
@@ -95,10 +96,10 @@ fun HmDialog(
     ) {
         AnimatedVisibility(
             visible = visible,
-            enter = fadeIn(tween(240, easing = LinearEasing)) +
-                    scaleIn(initialScale = 0.96f, animationSpec = tween(240, easing = LinearEasing)),
-            exit = fadeOut(tween(200, easing = LinearEasing)) +
-                    scaleOut(targetScale = 0.98f, animationSpec = tween(200, easing = LinearEasing))
+            enter = fadeIn(tween(motionMs(240), easing = LinearEasing)) +
+                    scaleIn(initialScale = 0.96f, animationSpec = tween(motionMs(240), easing = LinearEasing)),
+            exit = fadeOut(tween(motionMs(200), easing = LinearEasing)) +
+                    scaleOut(targetScale = 0.98f, animationSpec = tween(motionMs(200), easing = LinearEasing))
         ) {
             Column(
                 modifier = Modifier
@@ -160,7 +161,7 @@ fun HmDialogPrimaryButton(
             .clip(shape)
             .background(container)
             // 品牌色/危险红底不动，只加一层玻璃高光 + 描边
-            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.45f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.45f, paintFill = false)
             .clickable(enabled = enabled) { onClick() }
             // 无障碍最小触控高度（GlassSize.buttonHeight = 46dp ≥ 44dp）
             .heightIn(min = GlassSize.buttonHeight)
@@ -190,7 +191,7 @@ fun HmDialogSecondaryButton(
             // 浅色下 inputBg 是浅灰、深色下是 6% 白 —— 先铺它保证按钮与面板有对比，
             // 再叠玻璃薄雾/顶部高光/描边（不模糊，弹窗里没有可采样的背景）。
             .background(colors.inputBg, shape)
-            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 1.15f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 1.15f, paintFill = false)
             .clickable { onClick() }
             .heightIn(min = GlassSize.buttonHeight)
             .padding(vertical = 11.dp),

@@ -15,8 +15,11 @@ import com.easytier.ui.glass.GlassLevel
 import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.effects.glassSurface
+import com.easytier.ui.glass.effects.universalSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /**
  * 「乳白玻璃」填充 —— 全 App 的视觉基准由 [com.easytier.ui.ProxyLaunchCard] 定义。
@@ -61,6 +64,10 @@ fun Modifier.milkyGlass(
     shadowElevation: Dp = 0.dp,
     level: GlassLevel = LocalGlassLevel.current
 ): Modifier {
+    // UNIVERSAL：乳白半透明填充 + 高光全部换成不透明面板 + 0.8dp 描边 + 轻阴影（≤6dp）。
+    if (LocalThemeMode.current == ThemeMode.UNIVERSAL) {
+        return universalSurface(shape = shape, shadowElevation = shadowElevation)
+    }
     val colors = glassColors()
     val fill = milkyFillBrush(colors.isDark)
     var result = this

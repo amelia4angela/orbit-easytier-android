@@ -36,8 +36,11 @@ import com.easytier.ui.glass.effects.GlassShaderSpec
 import com.easytier.ui.glass.effects.LocalGlassRefraction
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.effects.rememberGlassPerformance
+import com.easytier.ui.glass.effects.universalSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /**
  * Spring press feedback for glass controls.
@@ -115,15 +118,20 @@ fun GlassSurface(
         level.backdropBlur * if (LocalGlassBoost.current > 1.01f) 1.25f else 1f
         ).dp
 
+    // UNIVERSAL：连背景采样层都不组装 —— blur / RenderEffect / RuntimeShader 一次都不会被调用。
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
+
     Box(modifier = modifier) {
-        GlassBackdropSlice(
-            modifier = Modifier.matchParentSize(),
-            shape = shape,
-            blurRadius = blurDp,
-            level = level,
-            radius = radius,
-            refraction = refraction
-        )
+        if (!universal) {
+            GlassBackdropSlice(
+                modifier = Modifier.matchParentSize(),
+                shape = shape,
+                blurRadius = blurDp,
+                level = level,
+                radius = radius,
+                refraction = refraction
+            )
+        }
         Box(
             Modifier
                 .matchParentSize()
@@ -153,6 +161,13 @@ fun Modifier.glassStable(
     shape: Shape = glassShape(radius),
     shadowElevation: Dp = 0.dp
 ): Modifier {
+    // UNIVERSAL：内容卡 = 不透明底 + 0.8dp 描边 + 2dp 起的轻阴影，没有任何高光/薄雾层。
+    if (LocalThemeMode.current == ThemeMode.UNIVERSAL) {
+        return universalSurface(
+            shape = shape,
+            shadowElevation = shadowElevation.coerceAtLeast(2.dp)
+        )
+    }
     val colors = glassColors()
     var result = this
     if (shadowElevation > 0.dp) {
@@ -190,6 +205,13 @@ fun Modifier.glassCard(
     intensity: Float = 0.55f,
     shadowElevation: Dp = 0.dp
 ): Modifier {
+    // UNIVERSAL：设置行/表单卡统一 2–6dp 轻阴影 + 实色底，无 sheen、无描边渐变。
+    if (LocalThemeMode.current == ThemeMode.UNIVERSAL) {
+        return universalSurface(
+            shape = shape,
+            shadowElevation = shadowElevation.coerceAtLeast(2.dp)
+        )
+    }
     val colors = glassColors()
     var result = this
     if (shadowElevation > 0.dp) {

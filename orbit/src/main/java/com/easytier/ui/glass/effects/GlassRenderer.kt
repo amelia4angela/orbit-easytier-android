@@ -34,6 +34,8 @@ import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
@@ -178,6 +180,46 @@ fun GlassSky(
 private fun Color.scaleAlphaBy(factor: Float): Color =
     copy(alpha = (alpha * factor).coerceIn(0f, 1f))
 
+/** Universal UI 材质常量：0.8dp 清晰描边、2–6dp 轻阴影。 */
+private val UniversalBorder = 0.8.dp
+private val UniversalMinShadow = 2.dp
+private val UniversalMaxShadow = 6.dp
+
+/**
+ * Universal UI（玻璃关闭）的**唯一**材质：极浅竖向渐变底 + 0.8dp 清晰描边 + ≤6dp 轻阴影。
+ *
+ * 整条链路只有 `background` / `border` / `shadow` 三样：
+ * **不含 blur、不含 RenderEffect、不含 RuntimeShader** —— 这就是 UNIVERSAL 模式下
+ * 「零高成本渲染」的落点。
+ *
+ * @param paintFill false = 调用方已经在下面铺了品牌色（CTA / 危险按钮 / 状态胶囊），
+ *   这里只补描边和阴影，不能把语义色盖成白底。
+ */
+@Composable
+fun Modifier.universalSurface(
+    shape: Shape,
+    shadowElevation: Dp = UniversalMinShadow,
+    paintFill: Boolean = true
+): Modifier {
+    val colors = glassColors()
+    val elevation = shadowElevation.coerceIn(0.dp, UniversalMaxShadow)
+    var result = this
+    if (elevation > 0.dp) {
+        result = result.shadow(
+            elevation = elevation,
+            shape = shape,
+            clip = false,
+            ambientColor = colors.universalShadow,
+            spotColor = colors.universalShadow
+        )
+    }
+    var layers = result.clip(shape)
+    if (paintFill) {
+        layers = layers.background(colors.universalBrush, shape)
+    }
+    return layers.border(UniversalBorder, colors.universalBorder, shape)
+}
+
 /**
  * The glass *material* — fills, rim, sheen and shadow for the requested [level].
  *
@@ -196,6 +238,8 @@ private fun Color.scaleAlphaBy(factor: Float): Color =
  *   painted-on chromatic fringe is dropped, because the real dispersion comes from the shader.
  *   The shader itself is attached where the backdrop lives (GlassBackdropSlice) — a Modifier has
  *   no children to sample, so `glassSurface` alone can only carry the spec, not refract.
+ * @param paintFill 仅对 UNIVERSAL 生效：false 表示调用方已经在下面铺了品牌色/状态色，
+ *   只补描边 + 阴影（见 [universalSurface]）。玻璃模式下该参数无效果。
  */
 @Composable
 fun Modifier.glassSurface(
@@ -205,8 +249,17 @@ fun Modifier.glassSurface(
     shape: Shape = com.easytier.ui.glass.glassShape(radius),
     shadowElevation: Dp = 0.dp,
     specular: Boolean = true,
-    refraction: GlassShaderSpec = LocalGlassRefraction.current
+    refraction: GlassShaderSpec = LocalGlassRefraction.current,
+    paintFill: Boolean = true
 ): Modifier {
+    // ── Universal UI 分叉（最先返回，保证后面一行 blur/渲染代码都不会被走到）──
+    if (LocalThemeMode.current == ThemeMode.UNIVERSAL) {
+        return universalSurface(
+            shape = shape,
+            shadowElevation = shadowElevation,
+            paintFill = paintFill
+        )
+    }
     val colors = glassColors()
     val perf = rememberGlassPerformance(level)
     val effective = perf.effective
@@ -231,21 +284,14 @@ fun Modifier.glassSurface(
             spotColor = colors.shadow
         )
     }
-    // Android 13 以下 / 手动 LITE：不开启玻璃质感，回到原生纯色材质。
-    // 图片背景下把填充再压向不透明（没有模糊挡着，花色会直接透上来）。
+    // Android 13 以下 / 手动 LITE / 省电模式：不开启玻璃质感，直接落到同一套 Universal 材质
+    // （不透明底 + 0.8dp 描边 + 轻阴影）。留一条路径就不存在「两套无模糊外观」。
     if (effective == GlassLevel.LITE) {
-        val solid = if (boost > 1.01f) {
-            colors.stableFill.copy(
-                alpha = colors.stableFill.alpha +
-                    (1f - colors.stableFill.alpha) * 0.7f
-            )
-        } else {
-            colors.stableFill
-        }
-        return result
-            .clip(shape)
-            .background(solid, shape)
-            .border(0.5.dp, colors.border, shape)
+        return universalSurface(
+            shape = shape,
+            shadowElevation = shadowElevation,
+            paintFill = paintFill
+        )
     }
     return result
         .clip(shape)

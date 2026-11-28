@@ -45,6 +45,7 @@ import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.glass.rememberGlassLevel
 import com.easytier.ui.theme.EasyTierTheme
+import com.easytier.ui.theme.ProvideThemeMode
 import com.easytier.ui.theme.currentColors
 import org.json.JSONObject
 import java.io.File
@@ -108,6 +109,8 @@ class ConfigEditActivity : AppCompatActivity() {
         val initialConfig = TomlUtils.jsonToConfigState(initialJson)
 
         setContent {
+            // 独立的 Activity 也有自己的组合：同样在顶层读一次用户选择（<33 恒为 UNIVERSAL）。
+            ProvideThemeMode {
             EasyTierTheme(darkTheme = isDarkTheme) {
             // 液态玻璃作用域：只提供调色板 + 质量档位，ConfigForm 的卡片/分组容器
             // （flGlassCard → glassCard）按档位渲染；编辑逻辑与此无关，一行未动。
@@ -152,7 +155,8 @@ class ConfigEditActivity : AppCompatActivity() {
                     )
                 }
             } // end GlassTheme
-            }
+            } // end EasyTierTheme
+            } // end ProvideThemeMode
         }
     }
 

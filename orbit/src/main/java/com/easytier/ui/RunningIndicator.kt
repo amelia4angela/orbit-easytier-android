@@ -66,7 +66,7 @@ fun RunningIndicator(
                 if (running) colors.accentContainer else colors.warningBg,
                 glassShape(GlassRadius.sm)
             )
-            .glassSurface(radius = GlassRadius.sm, intensity = 0.35f)
+            .glassSurface(radius = GlassRadius.sm, intensity = 0.35f, paintFill = false)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

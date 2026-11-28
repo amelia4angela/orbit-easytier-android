@@ -74,7 +74,7 @@ fun EasyTierTheme(
 ) {
     val appCtx = androidx.compose.ui.platform.LocalContext.current
     val colorScheme = when {
-        dynamicColor && android.os.Build.VERSION.SDK_INT >= 27 ->
+        dynamicColor && com.easytier.ui.theme.AppThemeManager.supportsDynamicColor() ->
             accentScheme(appCtx, darkTheme)
         darkTheme -> DarkColorScheme
         else -> YouthfulLightColorScheme

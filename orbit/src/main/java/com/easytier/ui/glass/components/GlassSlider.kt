@@ -26,6 +26,8 @@ import com.easytier.ui.glass.GlassLevel
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /**
  * Minimal glass slider — custom track so the fill/thumbs match the glass palette.
@@ -44,6 +46,7 @@ fun GlassSlider(
     onValueChangeFinished: (() -> Unit)? = null
 ) {
     val colors = glassColors()
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
     var widthPx by remember { mutableStateOf(0f) }
     val span = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
     val fraction = ((value - valueRange.start) / span).coerceIn(0f, 1f)
@@ -88,15 +91,15 @@ fun GlassSlider(
             val cy = size.height / 2f
             val r = CornerRadius(trackH / 2f, trackH / 2f)
 
-            // Inactive track
+            // Inactive track：UNIVERSAL 用不透明中性底 + 清晰描边（无玻璃薄雾）
             drawRoundRect(
-                color = colors.fillTop,
+                color = if (universal) colors.universalFill else colors.fillTop,
                 topLeft = Offset(0f, cy - trackH / 2f),
                 size = Size(size.width, trackH),
                 cornerRadius = r
             )
             drawRoundRect(
-                color = colors.border,
+                color = if (universal) colors.universalBorder else colors.border,
                 topLeft = Offset(0f, cy - trackH / 2f),
                 size = Size(size.width, trackH),
                 cornerRadius = r,

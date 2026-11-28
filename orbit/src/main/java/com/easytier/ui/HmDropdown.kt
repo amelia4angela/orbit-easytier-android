@@ -55,6 +55,7 @@ import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.currentColors
+import com.easytier.ui.theme.motionMs
 import kotlinx.coroutines.delay
 
 /** 下拉弹层的一项：[label] 给用户看，[value] 写回配置，[hint] 可选一行说明。 */
@@ -218,10 +219,10 @@ fun HmDropdownField(
                 ) {
                     androidx.compose.animation.AnimatedVisibility(
                         visible = expanded,
-                        enter = fadeIn(tween(220, easing = HarmonyEasing)) +
-                                slideInVertically(tween(220, easing = HarmonyEasing)) { -slidePx },
-                        exit = fadeOut(tween(160, easing = HarmonyEasing)) +
-                                slideOutVertically(tween(160, easing = HarmonyEasing)) { -slidePx }
+                        enter = fadeIn(tween(motionMs(220), easing = HarmonyEasing)) +
+                        slideInVertically(tween(motionMs(220), easing = HarmonyEasing)) { -slidePx },
+                        exit = fadeOut(tween(motionMs(160), easing = HarmonyEasing)) +
+                        slideOutVertically(tween(motionMs(160), easing = HarmonyEasing)) { -slidePx }
                     ) {
                         Column(
                             modifier = Modifier

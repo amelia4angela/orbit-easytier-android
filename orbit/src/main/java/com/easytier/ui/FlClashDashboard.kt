@@ -313,7 +313,7 @@ fun FlClashStatusCard(
             .clip(cardShape)
             .background(gradient)
             // 玻璃高光/描边叠在状态色之上；不模糊 —— 卡片不采样背景，避免与页面玻璃嵌套模糊
-            .glassSurface(radius = GlassRadius.lg, shape = cardShape, intensity = glassIntensity)
+            .glassSurface(radius = GlassRadius.lg, shape = cardShape, intensity = glassIntensity, paintFill = false)
             .padding(16.dp)
     ) {
         Row(

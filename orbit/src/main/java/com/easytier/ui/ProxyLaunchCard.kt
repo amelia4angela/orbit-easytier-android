@@ -63,6 +63,8 @@ import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.theme.AppColors
 import com.easytier.ui.theme.LocalIsDarkTheme
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 import com.easytier.ui.theme.currentColors
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -104,6 +106,7 @@ fun ProxyLaunchCard(
     val colors = currentColors()
     val glass = glassColors()
     val isDark = LocalIsDarkTheme.current
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
 
     val running = state.status == ConnectionStatus.RUNNING ||
         state.status == ConnectionStatus.NO_TUN
@@ -169,12 +172,14 @@ fun ProxyLaunchCard(
         label = "launchStatusColor"
     )
 
-    val milkyFill = if (isDark) {
-        Brush.verticalGradient(
+    val milkyFill = when {
+        // UNIVERSAL：异形轮廓保留，但填充换成不透明实色（深色 #1A1D23 系 / 浅色白），
+        // 不再依赖「半透明白 + 背景模糊」把字压住。
+        universal -> glass.universalBrush
+        isDark -> Brush.verticalGradient(
             listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.05f))
         )
-    } else {
-        Brush.verticalGradient(
+        else -> Brush.verticalGradient(
             listOf(Color.White.copy(alpha = 0.78f), Color.White.copy(alpha = 0.56f))
         )
     }
@@ -184,11 +189,16 @@ fun ProxyLaunchCard(
             .fillMaxWidth()
             .onSizeChanged { if (it != cardSize) cardSize = it }
             .shadow(
-                elevation = if (isDark) 20.dp else 14.dp,
+                // UNIVERSAL：轻阴影 ≤6dp；玻璃模式保留原来的浮起感。
+                elevation = when {
+                    universal -> 6.dp
+                    isDark -> 20.dp
+                    else -> 14.dp
+                },
                 shape = shape,
                 clip = false,
-                ambientColor = glass.shadow,
-                spotColor = glass.shadow
+                ambientColor = if (universal) glass.universalShadow else glass.shadow,
+                spotColor = if (universal) glass.universalShadow else glass.shadow
             )
             .clip(shape)
             .background(milkyFill, shape)
@@ -239,7 +249,7 @@ fun ProxyLaunchCard(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CountryChip(code = networkInfo.countryCode, colors = colors, glass = glass, isDark = isDark)
+                    CountryChip(code = networkInfo.countryCode, colors = colors, glass = glass, isDark = isDark, universal = universal)
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -330,17 +340,26 @@ private fun CountryChip(
     code: String?,
     colors: AppColors,
     glass: GlassColors,
-    isDark: Boolean
+    isDark: Boolean,
+    universal: Boolean
 ) {
     val shape = RoundedCornerShape(9.dp)
     Box(
         modifier = Modifier
             .clip(shape)
             .background(
-                if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.66f),
+                when {
+                    universal -> glass.universalFill
+                    isDark -> Color.White.copy(alpha = 0.10f)
+                    else -> Color.White.copy(alpha = 0.66f)
+                },
                 shape
             )
-            .border(0.5.dp, glass.border, shape)
+            .border(
+                width = if (universal) 0.8.dp else 0.5.dp,
+                color = if (universal) glass.universalBorder else glass.border,
+                shape = shape
+            )
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(

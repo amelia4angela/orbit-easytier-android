@@ -2,7 +2,6 @@ package com.easytier.ui.glass.effects
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
-import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
@@ -76,10 +75,13 @@ data class GlassShaderSpec(
  */
 val LocalGlassRefraction = staticCompositionLocalOf { GlassShaderSpec() }
 
-/** Runtime capability probe. Reads an int only — safe to call on every API level. */
+/** Runtime capability probe. Safe to call on every API level (single boolean read). */
 object GlassRefractionSupport {
-    /** `RuntimeShader` + runtime-shader `RenderEffect` are both API 33+. */
-    val isAvailable: Boolean get() = Build.VERSION.SDK_INT >= 33
+    /**
+     * `RuntimeShader` + runtime-shader `RenderEffect` are both API 33+。
+     * 版本判断统一收到 [com.easytier.ui.theme.AppThemeManager]，本文件不再自己看 SDK_INT。
+     */
+    val isAvailable: Boolean get() = com.easytier.ui.theme.AppThemeManager.isGlassCapable()
 }
 
 /**

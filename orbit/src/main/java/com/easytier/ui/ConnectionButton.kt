@@ -64,7 +64,7 @@ fun ControlFAB(
             .glassPress(onClick = onClick)
             .clip(fabShape)
             .background(fabBrush, fabShape)
-            .glassSurface(radius = 28.dp, shape = fabShape, intensity = 0.5f),
+            .glassSurface(radius = 28.dp, shape = fabShape, intensity = 0.5f, paintFill = false),
         contentAlignment = Alignment.Center
     ) {
         Text(

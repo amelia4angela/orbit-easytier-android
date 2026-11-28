@@ -45,6 +45,8 @@ import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.effects.rememberGlassPerformance
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /** Visual/semantic role of a [GlassButton]. */
 enum class GlassButtonTone {
@@ -102,10 +104,14 @@ fun GlassButton(
 
     val disabledAlpha = 0.45f
     val alpha = if (enabled) 1f else disabledAlpha
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
 
     val background: Brush = when (tone) {
         GlassButtonTone.PRIMARY -> colors.accentGradient
-        GlassButtonTone.SECONDARY -> Brush.verticalGradient(listOf(colors.fillTop, colors.fillBottom))
+        // UNIVERSAL：次按钮 = 不透明浅底（深色 #1A1D23 系 / 浅色白），不再是半透明玻璃
+        GlassButtonTone.SECONDARY ->
+            if (universal) colors.universalBrush
+            else Brush.verticalGradient(listOf(colors.fillTop, colors.fillBottom))
         GlassButtonTone.DANGER -> Brush.verticalGradient(
             listOf(colors.danger.copy(alpha = 0.92f), colors.danger.copy(alpha = 0.74f))
         )
@@ -117,25 +123,35 @@ fun GlassButton(
         GlassButtonTone.DANGER -> Color.White
     }
 
+    // 阴影：玻璃模式保持原来的「主按钮抬高」，UNIVERSAL 收到 2–4dp 的轻阴影。
+    val shadowDp = when {
+        !enabled -> 0.dp
+        universal -> if (tone == GlassButtonTone.SECONDARY) 2.dp else 4.dp
+        tone == GlassButtonTone.PRIMARY -> 10.dp
+        else -> 0.dp
+    }
+
     Box(
         modifier = modifier
             .scale(scale)
             .graphicsLayer { this.alpha = alpha }
             .defaultMinSize(minHeight = minHeight)
             .shadow(
-                elevation = if (tone == GlassButtonTone.PRIMARY && enabled) 10.dp else 0.dp,
+                elevation = shadowDp,
                 shape = shape,
                 clip = false,
-                ambientColor = colors.shadow,
-                spotColor = colors.shadow
+                ambientColor = if (universal) colors.universalShadow else colors.shadow,
+                spotColor = if (universal) colors.universalShadow else colors.shadow
             )
             .clip(shape)
             .background(background, shape)
             .then(
-                if (tone == GlassButtonTone.PRIMARY) {
-                    Modifier
-                } else {
-                    Modifier.border(GlassSize.hairline, colors.rimGradient, shape)
+                when {
+                    // 玻璃主按钮本来就是纯 brand 色，不加边
+                    tone == GlassButtonTone.PRIMARY -> Modifier
+                    // UNIVERSAL 的次按钮：清晰 0.8dp 描边（玻璃模式用发丝 rim 渐变）
+                    universal -> Modifier.border(0.8.dp, colors.universalBorder, shape)
+                    else -> Modifier.border(GlassSize.hairline, colors.rimGradient, shape)
                 }
             )
             .clickable(

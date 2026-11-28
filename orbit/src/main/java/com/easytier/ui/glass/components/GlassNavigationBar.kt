@@ -42,6 +42,8 @@ import com.easytier.ui.glass.GlassPaddings
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 import kotlin.math.roundToInt
 
 /** One tab in a [GlassNavigationBar]. */
@@ -72,6 +74,10 @@ fun GlassNavigationBar(
     val shape = RoundedCornerShape(24.dp)
     val indicatorShape = RoundedCornerShape(16.dp)
     val safeIndex = selectedIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+    // UNIVERSAL：悬浮胶囊 = 实色/极浅渐变 + 中层阴影；选中 = 淡蓝胶囊底 + 蓝色图标文字。
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
+    val indicatorColor = if (universal) colors.accentSoft else colors.accent
+    val activeTint = if (universal) colors.accent else Color.White
 
     val slot by animateFloatAsState(
         targetValue = safeIndex.toFloat(),
@@ -101,7 +107,7 @@ fun GlassNavigationBar(
                     .width(itemWidth)
                     .fillMaxHeight()
                     .clip(indicatorShape)
-                    .background(colors.accent)
+                    .background(indicatorColor)
             )
 
             Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
@@ -117,7 +123,7 @@ fun GlassNavigationBar(
                         }
                     }
                     val tint by animateColorAsState(
-                        targetValue = if (lit) Color.White else colors.textTertiary,
+                        targetValue = if (lit) activeTint else colors.textTertiary,
                         animationSpec = GlassMotion.quickEase(),
                         label = "glassNavTint"
                     )

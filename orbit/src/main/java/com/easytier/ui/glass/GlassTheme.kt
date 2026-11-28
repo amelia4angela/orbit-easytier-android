@@ -1,7 +1,6 @@
 package com.easytier.ui.glass
 
 import android.content.Context
-import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -11,7 +10,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import com.easytier.ui.theme.AppThemeManager
 import com.easytier.ui.theme.LocalIsDarkTheme
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 import com.easytier.ui.theme.currentColors
 
 /**
@@ -50,11 +52,11 @@ enum class GlassLevel(val labelZh: String, val labelEn: String) {
         }
 
     companion object {
-        /** Device default: glass only on Android 13+ (33+ HIGH); everything below is LITE. */
-        fun auto(sdk: Int = Build.VERSION.SDK_INT): GlassLevel = when {
-            sdk >= 33 -> HIGH
-            else -> LITE
-        }
+        /**
+         * 设备默认质量档：能上玻璃就是 HIGH，否则 LITE（= Universal 同一条渲染路径）。
+         * 版本判断统一走 [AppThemeManager.isGlassCapable]，本文件不再自己看 SDK_INT。
+         */
+        fun auto(): GlassLevel = if (AppThemeManager.isGlassCapable()) HIGH else LITE
     }
 }
 
@@ -64,10 +66,11 @@ private const val PREFS = "glass_prefs"
 private const val KEY_QUALITY = "glass_quality"
 
 /**
- * Quality level for the current screen, remembered across launches.
+ * Quality level for the current screen.
  *
  * Resolution order: the stored override in SharedPreferences ("glass_quality") → [GlassLevel.auto].
- * Writing `.value` persists immediately, which is what the Showcase quality switch relies on.
+ * Only an explicit `persist = true` reads/writes that key; the whole-app appearance is *not*
+ * switched through it any more — that is [com.easytier.ui.theme.ThemeMode]'s job now.
  */
 @Composable
 fun rememberGlassLevel(persist: Boolean = false): MutableState<GlassLevel> {
@@ -97,6 +100,10 @@ fun rememberGlassLevel(persist: Boolean = false): MutableState<GlassLevel> {
  *
  * Must sit *inside* [com.easytier.ui.theme.EasyTierTheme] so light/dark stays driven by the
  * existing theme state rather than a second switch.
+ *
+ * **Universal 强制降级**：`ThemeMode.UNIVERSAL` 时这里把 [LocalGlassLevel] 覆盖成 [GlassLevel.LITE]，
+ * 于是整棵子树（包括嵌套的 `GlassTheme` 调用）都走「无模糊」那条渲染路径 —— 这也是全 App
+ * 关闭玻璃效果时唯一需要改的一处开关点。
  */
 @Composable
 fun GlassTheme(
@@ -106,9 +113,12 @@ fun GlassTheme(
     val app = currentColors()
     val dark = LocalIsDarkTheme.current
     val colors = remember(app, dark) { GlassColors.of(app, dark) }
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
+    // UNIVERSAL = 统一走 LITE 渲染路径（不再需要用户手选档位）。
+    val effectiveLevel = if (universal) GlassLevel.LITE else level
     androidx.compose.runtime.CompositionLocalProvider(
         LocalGlassColors provides colors,
-        LocalGlassLevel provides level,
+        LocalGlassLevel provides effectiveLevel,
         content = content
     )
 }

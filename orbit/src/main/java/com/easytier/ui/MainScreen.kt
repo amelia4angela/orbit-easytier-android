@@ -60,6 +60,7 @@ import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.rememberGlassLevel
 import com.easytier.ui.glass.glassShape
+import com.easytier.ui.theme.motionMs
 import com.easytier.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -239,6 +240,13 @@ fun MainScreen(
     // 一层图片 Composable，否则玻璃采到的是渐变、屏幕上却是一张照片）。
     // 业务状态 / 网络 / 页面栈全部还在下面这个 Box 里，一行没动。
     val glassLevel = rememberGlassLevel()
+    // 过渡时长：UNIVERSAL 自动压到 60%（≤200ms）。AnimatedContent 的 transitionSpec 不是
+    // @Composable 作用域，所以在这里先取值、再在闭包里引用。
+    val motionPageIn = motionMs(260)
+    val motionPageFade = motionMs(200)
+    val motionPageOut = motionMs(120)
+    val motionTabIn = motionMs(240)
+    val motionTabOut = motionMs(180)
     val darkBg = LocalIsDarkTheme.current
     GlassTheme(level = glassLevel.value) {
         // 图片背景：填充更实 + 模糊更强（LocalGlassBoost），二级页底色按 LocalBgSurface 走。
@@ -280,15 +288,16 @@ fun MainScreen(
                     AnimatedContent(
                         targetState = subPage,
                         transitionSpec = {
+                            // 时长走 motionMs()：UNIVERSAL 下自动缩短到 60%（260 → 156ms）。
                             if (navForward) {
-                                (slideInHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
-                                    fadeIn(tween(260, easing = HarmonyEasing)))
-                                    .togetherWith(fadeOut(tween(120, easing = HarmonyEasing)))
+                                (slideInHorizontally(tween(motionPageIn, easing = HarmonyEasing)) { it / 4 } +
+                                    fadeIn(tween(motionPageIn, easing = HarmonyEasing)))
+                                    .togetherWith(fadeOut(tween(motionPageOut, easing = HarmonyEasing)))
                             } else {
-                                fadeIn(tween(200, easing = HarmonyEasing))
+                                fadeIn(tween(motionPageFade, easing = HarmonyEasing))
                                     .togetherWith(
-                                        slideOutHorizontally(tween(260, easing = HarmonyEasing)) { it / 4 } +
-                                            fadeOut(tween(200, easing = HarmonyEasing))
+                                        slideOutHorizontally(tween(motionPageIn, easing = HarmonyEasing)) { it / 4 } +
+                                            fadeOut(tween(motionPageFade, easing = HarmonyEasing))
                                     )
                             }
                         },
@@ -374,11 +383,11 @@ fun MainScreen(
                                     val forward = targetState.ordinal >= initialState.ordinal
                                     val dir = if (forward) 1 else -1
                                     (
-                                        fadeIn(tween(240, easing = HarmonyEasing)) +
-                                            slideInHorizontally(tween(240, easing = HarmonyEasing)) { it / 8 * dir }
+                                        fadeIn(tween(motionTabIn, easing = HarmonyEasing)) +
+                                            slideInHorizontally(tween(motionTabIn, easing = HarmonyEasing)) { it / 8 * dir }
                                         ).togetherWith(
-                                        fadeOut(tween(180, easing = HarmonyEasing)) +
-                                            slideOutHorizontally(tween(240, easing = HarmonyEasing)) { -it / 12 * dir }
+                                        fadeOut(tween(motionTabOut, easing = HarmonyEasing)) +
+                                            slideOutHorizontally(tween(motionTabIn, easing = HarmonyEasing)) { -it / 12 * dir }
                                     )
                                 },
                                 label = "tabTransition"
@@ -421,7 +430,6 @@ fun MainScreen(
                                 onNavigateToGeneral = { openPage(SettingsPage.GENERAL) },
                                 onNavigateToTheme = { openPage(SettingsPage.THEME) },
                                 onNavigateToAbout = { openPage(SettingsPage.ABOUT) },
-                                onNavigateToShowcase = { openPage(SettingsPage.SHOWCASE) },
                                 onConfigServer = onConfigServer,
                                 onToggleConnection = onToggleConnection,
                                 onOpenLogs = { currentTab = Tab.LOGS },
@@ -1085,7 +1093,7 @@ private fun ConfigTab(
                     else Modifier.background(colors.accentGradient)
                 )
                 // 玻璃高光/描边（品牌渐变与危险色保持，只叠材质）
-                .glassSurface(radius = GlassRadius.sm, shape = ctaShape, intensity = 0.5f)
+                .glassSurface(radius = GlassRadius.sm, shape = ctaShape, intensity = 0.5f, paintFill = false)
                 .clickable {
                     if (locked) {
                         onStopService()
@@ -1139,10 +1147,10 @@ private fun ActionBtn(
         !enabled && accent -> Modifier.background(colors.accent.copy(alpha = 0.35f), shape)
         accent -> Modifier
             .background(colors.accentGradient, shape)
-            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.5f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.5f, paintFill = false)
         danger -> Modifier
             .background(colors.dangerBg, shape)
-            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.35f)
+            .glassSurface(radius = GlassRadius.sm, shape = shape, intensity = 0.35f, paintFill = false)
         !enabled -> Modifier
             // 禁用态：主题中性填充（与 HmSwitch 关闭轨道同一档）+ 玻璃描边，
             // 保持「按不动」的观感；浅色下若用白色系玻璃填充会直接看不见。
@@ -1184,7 +1192,6 @@ private fun MoreTab(
     onNavigateToGeneral: () -> Unit,
     onNavigateToTheme: () -> Unit,
     onNavigateToAbout: () -> Unit,
-    onNavigateToShowcase: () -> Unit,
     onConfigServer: () -> Unit,
     onToggleConnection: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
@@ -1286,14 +1293,9 @@ private fun MoreTab(
             onClick = { onNavigateToTheme() }
         )
 
-        // Glass Showcase — temporary entry for the Liquid Glass phase 3-5 work.
-        SettingsNavRow(
-            icon = "✨",
-            title = "Glass Showcase",
-            subtitle = T("液态玻璃设计系统演示（临时）", "Liquid glass design system demo (temp)", langZh),
-            colors = colors,
-            onClick = { onNavigateToShowcase() }
-        )
+        // Glass Showcase 入口已移除：玻璃/通用两套外观现在由
+        // 「设置 → 主题 → 外观 → Liquid Glass 效果」开关控制（ThemeMode）。
+        // GlassShowcase.kt 文件与 SettingsPage.SHOWCASE 路由保留但不再有入口。
 
         // About Card (clickable → navigates to AboutPage)
         Box(
@@ -1524,7 +1526,7 @@ fun AboutPage(
                             // 品牌色底 + 玻璃薄雾/描边（与弹窗主按钮同一手法）。
                             // 底与描边共用同一个 shape，避免两者圆角不一致露边。
                             .background(colors.accentContainer.copy(alpha = 0.5f), linkShape)
-                            .glassSurface(radius = GlassRadius.sm, shape = linkShape, intensity = 0.3f)
+                            .glassSurface(radius = GlassRadius.sm, shape = linkShape, intensity = 0.3f, paintFill = false)
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Row(

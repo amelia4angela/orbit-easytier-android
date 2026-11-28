@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,8 @@ import com.easytier.ui.glass.GlassPaddings
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /**
  * Pill-shaped selectable tag. Selected = accent fill; unselected = glass pane.
@@ -45,8 +48,9 @@ fun GlassChip(
 ) {
     val colors = glassColors()
     val shape = RoundedCornerShape(percent = 50)
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
     val fill by animateColorAsState(
-        targetValue = if (selected) colors.accent else colors.fillTop,
+        targetValue = if (selected) colors.accent else if (universal) colors.universalFill else colors.fillTop,
         animationSpec = GlassMotion.quickEase(),
         label = "glassChipFill"
     )
@@ -62,7 +66,11 @@ fun GlassChip(
             .glassPress(enabled = enabled, onClick = onClick)
             .clip(shape)
             .background(fill, shape)
-            .border(GlassSize.hairline, colors.rimGradient, shape)
+            .border(
+                width = if (universal) 0.8.dp else GlassSize.hairline,
+                brush = if (universal) SolidColor(colors.universalBorder) else colors.rimGradient,
+                shape = shape
+            )
             .padding(GlassPaddings.chip),
         contentAlignment = Alignment.Center
     ) {
@@ -93,14 +101,19 @@ fun GlassSegmentedControl(
     val trackShape = RoundedCornerShape(14.dp)
     val indicatorShape = RoundedCornerShape(11.dp)
     val safeIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(42.dp)
             .clip(trackShape)
-            .background(colors.fillTop, trackShape)
-            .border(GlassSize.hairline, colors.rimGradient, trackShape)
+            .background(if (universal) colors.universalFill else colors.fillTop, trackShape)
+            .border(
+                width = if (universal) 0.8.dp else GlassSize.hairline,
+                brush = if (universal) SolidColor(colors.universalBorder) else colors.rimGradient,
+                shape = trackShape
+            )
             .padding(3.dp)
     ) {
         androidx.compose.foundation.layout.BoxWithConstraints(

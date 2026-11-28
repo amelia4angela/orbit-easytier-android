@@ -38,6 +38,7 @@ import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassSpace
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.motionMs
 import kotlinx.coroutines.delay
 
 /**
@@ -89,8 +90,8 @@ fun GlassBottomSheet(
                 ) + fadeIn(tween(160)),
                 exit = slideOutVertically(
                     targetOffsetY = { it },
-                    animationSpec = tween(220, easing = com.easytier.ui.HarmonyEasing)
-                ) + fadeOut(tween(160))
+                    animationSpec = tween(motionMs(220), easing = com.easytier.ui.HarmonyEasing)
+                ) + fadeOut(tween(motionMs(160)))
             ) {
                 GlassSurface(
                     modifier = modifier

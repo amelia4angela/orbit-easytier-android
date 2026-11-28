@@ -41,6 +41,17 @@ data class GlassColors(
     /** Dialog / sheet scrim. */
     val scrim: Color,
 
+    // ── Universal UI (ThemeMode.UNIVERSAL) 材质 ──
+    // 玻璃关掉之后的世界：实色底 + 顶部极浅提亮 + 清晰描边 + 轻阴影，全程零模糊。
+    /** 不透明卡片底：深色 #1A1D23 系，浅色纯白。 */
+    val universalFill: Color,
+    /** 渐变顶端（比 [universalFill] 亮 3–5%，只用来做「极浅渐变」，不是玻璃高光）。 */
+    val universalFillLift: Color,
+    /** 0.8dp 清晰描边（深色 12% 白 / 浅色 8% 黑）。 */
+    val universalBorder: Color,
+    /** 轻阴影（≤ 6dp 用）。 */
+    val universalShadow: Color,
+
     // ── Accent & semantics ──
     val accent: Color,
     val accentDeep: Color,
@@ -61,6 +72,13 @@ data class GlassColors(
 ) {
     /** Base pane gradient. */
     val fillGradient: Brush get() = Brush.verticalGradient(listOf(fillTop, fillBottom))
+
+    /**
+     * Universal UI 材质底：极浅竖向渐变（lift → fill），两者都不透明，
+     * 所以它压在花色壁纸/照片上也绝不会掉字 —— 这是 Universal 的核心承诺。
+     */
+    val universalBrush: Brush
+        get() = Brush.verticalGradient(listOf(universalFillLift, universalFill))
 
     /** Top-lit sheen painted above the base fill (below content). */
     val sheenGradient: Brush
@@ -95,6 +113,10 @@ data class GlassColors(
                 borderHighlight = Color(0x66FFFFFF),
                 shadow = Color(0x8C000000),
                 scrim = Color(0xB3000000),
+                universalFill = Color(0xFF1A1D23),
+                universalFillLift = Color(0xFF22262E),
+                universalBorder = Color(0x1FFFFFFF),
+                universalShadow = Color(0x66000000),
                 accent = AppleBlue,
                 accentDeep = AppleBlueDeep,
                 accentSoft = AppleBlueSoft,
@@ -121,6 +143,10 @@ data class GlassColors(
                 borderHighlight = Color(0xE6FFFFFF),
                 shadow = Color(0x26000000),
                 scrim = Color(0x66000000),
+                universalFill = Color(0xFFFFFFFF),
+                universalFillLift = Color(0xFFF7F9FC),
+                universalBorder = Color(0x14000000),
+                universalShadow = Color(0x1A000000),
                 accent = AppleBlue,
                 accentDeep = AppleBlueDeep,
                 accentSoft = Color(0x1F0A84FF),

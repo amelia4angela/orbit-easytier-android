@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,8 @@ import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 
 /**
  * Glass toggle.
@@ -45,8 +48,12 @@ fun GlassSwitch(
 ) {
     val colors = glassColors()
     val trackShape = RoundedCornerShape(percent = 50)
+    // UNIVERSAL：关闭态轨道用不透明中性底 + 0.8dp 描边（玻璃模式下白系填充在白卡上看不见）。
+    val universal = LocalThemeMode.current == ThemeMode.UNIVERSAL
     val trackColor by animateColorAsState(
-        targetValue = if (checked) colors.accent else colors.fillTop,
+        targetValue = if (checked) colors.accent
+        else if (universal) colors.universalFill
+        else colors.fillTop,
         animationSpec = GlassMotion.quickEase(),
         label = "glassSwitchTrack"
     )
@@ -62,7 +69,11 @@ fun GlassSwitch(
             .size(width = GlassSize.switchWidth, height = GlassSize.switchHeight)
             .clip(trackShape)
             .background(trackColor, trackShape)
-            .border(GlassSize.hairline, colors.rimGradient, trackShape)
+            .border(
+                width = if (universal) 0.8.dp else GlassSize.hairline,
+                brush = if (universal) SolidColor(colors.universalBorder) else colors.rimGradient,
+                shape = trackShape
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

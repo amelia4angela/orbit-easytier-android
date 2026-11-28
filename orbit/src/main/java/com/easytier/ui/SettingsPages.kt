@@ -42,6 +42,10 @@ import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.glassColors
 import com.easytier.ui.glass.glassShape
 import com.easytier.ui.theme.AppColors
+import com.easytier.ui.theme.AppThemeManager
+import com.easytier.ui.theme.LocalSetThemeMode
+import com.easytier.ui.theme.LocalThemeMode
+import com.easytier.ui.theme.ThemeMode
 import com.easytier.ui.theme.currentColors
 import androidx.compose.ui.graphics.Color as ComposeColor
 
@@ -341,7 +345,7 @@ fun GeneralPage(
                         // 状态红底 + 玻璃薄雾/描边（语义色不动，只叠材质；与弹窗主按钮同一手法）
                         .clip(restartShape)
                         .background(colors.statusBad, restartShape)
-                        .glassSurface(radius = GlassRadius.sm, shape = restartShape, intensity = 0.45f)
+                        .glassSurface(radius = GlassRadius.sm, shape = restartShape, intensity = 0.45f, paintFill = false)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
@@ -448,6 +452,80 @@ fun ThemePage(
                     selected = selectedIndex == 2,
                     colors = colors,
                     onClick = { select(2) }
+                )
+            }
+        }
+
+        // ── 外观：Liquid Glass 开关 ──
+        // 位置就在「主题」分组下面（设置 → 主题 → 外观），是整棵树唯一的外观开关：
+        //   · 33+：开关默认 ON（默认 LIQUID_GLASS），关掉立即全 App 切 Universal；
+        //   · <33：不显示开关（强制 Universal），只留一句说明。
+        // 开关只调用 LocalSetThemeMode → 改 CompositionLocal 状态 → 重组；不重建 Activity。
+        Text(
+            T("外观", "Appearance", langZh),
+            color = colors.textTertiary,
+            fontSize = 12.sp
+        )
+
+        val mode = LocalThemeMode.current
+        val setMode = LocalSetThemeMode.current
+        val glassCapable = AppThemeManager.isGlassCapable()
+        val glassOn = mode == ThemeMode.LIQUID_GLASS
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .glassCard(radius = GlassRadius.md)
+                .then(
+                    if (glassCapable) {
+                        Modifier.clickable {
+                            setMode(
+                                if (glassOn) ThemeMode.UNIVERSAL else ThemeMode.LIQUID_GLASS
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SettingsRowIcon("✦")
+            Spacer(Modifier.width(SettingsIconGap))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    T("Liquid Glass 效果", "Liquid Glass effects", langZh),
+                    color = colors.textPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    if (glassCapable) {
+                        T(
+                            "开启后使用 iOS 26 风格的液态玻璃视觉效果，可能增加图形渲染负载",
+                            "Enables iOS 26-style liquid glass; may increase GPU load",
+                            langZh
+                        )
+                    } else {
+                        T(
+                            "当前系统版本自动使用通用界面（Universal UI）",
+                            "This Android version always uses Universal UI",
+                            langZh
+                        )
+                    },
+                    color = colors.textTertiary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (glassCapable) {
+                Spacer(Modifier.width(10.dp))
+                HmSwitch(
+                    checked = glassOn,
+                    onCheckedChange = { on ->
+                        setMode(if (on) ThemeMode.LIQUID_GLASS else ThemeMode.UNIVERSAL)
+                    },
+                    colors = colors
                 )
             }
         }
@@ -584,7 +662,7 @@ private fun BgRefreshRow(
                     // 品牌色（或禁用态中性底）+ 玻璃薄雾/描边，与重启按钮同一手法
                     .clip(glowShape)
                     .background(if (busy) colors.inputBg else colors.accent, glowShape)
-                    .glassSurface(radius = GlassRadius.sm, shape = glowShape, intensity = 0.45f)
+                    .glassSurface(radius = GlassRadius.sm, shape = glowShape, intensity = 0.45f, paintFill = false)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(

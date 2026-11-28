@@ -63,6 +63,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import com.easytier.ui.theme.EasyTierTheme
+import com.easytier.ui.theme.ProvideThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -274,6 +275,10 @@ class MainActivity : ComponentActivity() {
         handleQuickToggle()
 
         setContent {
+            // ── 主题模式（玻璃 / Universal）──
+            // 状态提升到 setContent 顶层：设置页开关只改这个 state，重组成全局即时生效，
+            // **不重建 Activity** —— pageStack / subPage / 连接状态一行都不会丢。
+            ProvideThemeMode {
             EasyTierTheme(darkTheme = if (dynamicColor) isSystemInDarkTheme() else isDarkTheme, dynamicColor = dynamicColor) {
             // ── 液态玻璃作用域（阶段 6 第二批）──────────────────────────────
             // 只提供调色板 + 质量档位：MainActivity 直接渲染的弹窗（配置管理 / 新建 /
@@ -579,7 +584,8 @@ class MainActivity : ComponentActivity() {
                 }
                 } // end else (privacyAccepted)
             } // end GlassTheme
-            }
+            } // end EasyTierTheme
+            } // end ProvideThemeMode
         }
     }
 

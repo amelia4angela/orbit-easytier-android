@@ -863,6 +863,11 @@ private fun StatusTab(
     // 出口 IP / 国家码 / 网络类型：只在隧道运行期间探测（启动后立即一次，之后每 60s），断开清空。
     val networkInfo = rememberProxyNetworkInfo(active = isConnected)
 
+    // 隐藏 IP（只影响显示）：启动时从 prefs 读一次，拨动开关即落盘；面板与卡片共用这份状态。
+    val context = LocalContext.current
+    var hideIp by remember { mutableStateOf(IpMask.isHidden(context)) }
+    var showIpSheet by remember { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -872,6 +877,7 @@ private fun StatusTab(
         ) {
             // ── Liquid Glass 启动卡片（状态 / 出口 IP / 网络类型 / 时长 / 组织名 + 蓝色圆形按钮）──
             // 启停仍走 onToggleConnection → MainActivity 的 startEasyTier / stopEasyTier 原链路。
+            // 点 IP 区域（网络行）打开「出站 IP」详情面板，与启动按钮的事件互不影响。
             ProxyLaunchCard(
                 state = connectionState,
                 networkInfo = networkInfo,
@@ -879,7 +885,9 @@ private fun StatusTab(
                 orgName = networkName,
                 onStart = onToggleConnection,
                 onStop = onToggleConnection,
-                langZh = langZh
+                langZh = langZh,
+                hideIp = hideIp,
+                onIpClick = { showIpSheet = true }
             )
 
             PeerInfoSection(
@@ -894,6 +902,19 @@ private fun StatusTab(
         }
         // ControlFAB removed — connect button now lives inside the status card
     }
+
+    // 出站 IP 详情 Bottom Sheet（Dialog，渲染位置不影响显示）
+    OutboundIpSheet(
+        visible = showIpSheet,
+        onDismiss = { showIpSheet = false },
+        seed = networkInfo,
+        langZh = langZh,
+        hideIp = hideIp,
+        onHideIpChange = { next ->
+            hideIp = next
+            IpMask.setHidden(context, next)
+        }
+    )
 }
 
 // ═══════════════════════════════════════════════════

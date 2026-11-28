@@ -33,16 +33,85 @@ enum class NetworkType(val labelZh: String, val labelEn: String) {
 }
 
 /**
- * What the launch card shows on its network row.
+ * What the launch card / 出站 IP 面板 shows about the exit node.
  *
- * Every field is nullable on purpose: `null` means "unknown right now", and the UI renders `--`.
- * Nothing here is cached across a disconnect — see [rememberProxyNetworkInfo].
+ * Every field is nullable on purpose: `null` means "unknown right now", and the UI renders `--`
+ * (card) or 未知 / 暂无数据 (sheet). Nothing is invented: a field the source API did not answer
+ * stays `null` and the UI says so.
+ *
+ * [organization] [asn] [ipType] [riskTags] [apiSource] [level] are only filled by the detailed
+ * probe ([fetchDetailedNetworkInfo]); the lightweight 60 s card probe leaves them `null`.
  */
 data class ProxyNetworkInfo(
     val countryCode: String? = null,
     val ip: String? = null,
-    val networkType: NetworkType = NetworkType.NONE
+    val networkType: NetworkType = NetworkType.NONE,
+    /** ISP / 组织名，如 `Chinanet SN`。 */
+    val organization: String? = null,
+    /** `AS4134` 形式；源只给数字时补 `AS` 前缀。 */
+    val asn: String? = null,
+    /** 规范化 token：`residential` / `datacenter` / `mobile` / `proxy`；见 [ipTypeLabel]。 */
+    val ipType: String? = null,
+    /** 命中标记 token：`proxy` / `hosting` / `mobile` / `vpn` / `tor`；见 [riskTagLabel]。 */
+    val riskTags: List<String> = emptyList(),
+    /** 本次数据来源（如 `ip-api.com`），UI 显示「采用来源」。 */
+    val apiSource: String? = null,
+    /** IP 质量等级。当前免费源都不提供 → 保持 null，UI 显示「暂无数据」。 */
+    val level: String? = null
 )
+
+/** [ProxyNetworkInfo.ipType] 的 token → 文案。未知 token 原样返回。 */
+fun ipTypeLabel(token: String?, langZh: Boolean): String? = when (token) {
+    null -> null
+    "residential" -> T("住宅/企业", "Residential", langZh)
+    "datacenter" -> T("机房", "Datacenter", langZh)
+    "mobile" -> T("移动网络", "Mobile", langZh)
+    "proxy" -> T("代理", "Proxy", langZh)
+    else -> token
+}
+
+/** [ProxyNetworkInfo.riskTags] 的 token → 短标签。未知 token 原样返回。 */
+fun riskTagLabel(tag: String, langZh: Boolean): String = when (tag) {
+    "proxy" -> T("代理", "Proxy", langZh)
+    "hosting" -> T("机房", "Hosting", langZh)
+    "mobile" -> T("移动", "Mobile", langZh)
+    "vpn" -> T("VPN", "VPN", langZh)
+    "tor" -> T("Tor", "Tor", langZh)
+    else -> tag
+}
+
+/**
+ * 隐藏 IP（脱敏显示）。
+ *
+ * 只改**显示**，[ProxyNetworkInfo] 里的真实 IP 与代理链路完全不受影响。
+ * 规则（IPv4 / IPv6 同一套）：前 3 字符 + `...` + 后 2 字符 —— `113.5.6.60` → `113...60`。
+ */
+object IpMask {
+
+    private const val PREFS_STATE = "easytier_state"
+
+    /** 与 auto_check_update 同一个 prefs 文件。 */
+    const val KEY_HIDE_IP = "hide_ip"
+
+    fun isHidden(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HIDE_IP, false)
+
+    fun setHidden(context: Context, hidden: Boolean) {
+        context.getSharedPreferences(PREFS_STATE, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_HIDE_IP, hidden)
+            .apply()
+    }
+
+    /** `null` 进 `null` 出；短到无法「首尾各留」时只留首字符。 */
+    fun mask(ip: String?): String? {
+        val value = ip?.trim().orEmpty()
+        if (value.isEmpty()) return ip
+        if (value.length <= 6) return value.take(1) + "..."
+        return value.take(3) + "..." + value.takeLast(2)
+    }
+}
 
 /**
  * Real exit-IP probe.
@@ -71,16 +140,44 @@ object ProxyNetworkProbe {
     )
 
     /**
-     * Country-code sources (`%s` = the IP we just resolved). Both are HTTPS-only — the free
-     * ip-api.com tier is plain HTTP, which Android 9+ blocks for targetSdk 34.
+     * Country-code sources (`%s` = the IP we just resolved). Both are HTTPS-only.
      */
     private val COUNTRY_ENDPOINTS = listOf(
         "https://ipapi.co/%s/json/",
         "https://ipwho.is/%s"
     )
 
+    /**
+     * 明细源（IP + 组织 / ASN / 类型 / 风险标记），按「字段丰富度」排序，逐个尝试、首个成功即用。
+     *
+     * `ip-api.com` 免费版**只有 HTTP**（HTTPS 需付费），所以 Android 9+ 的明文限制靠
+     * `res/xml/network_security_config.xml` 里**只对 ip-api.com 域名**开白名单解决 ——
+     * 不设 `android:usesCleartextTraffic="true"`，其它域名仍然禁明文。
+     */
+    private val DETAIL_SOURCES: List<DetailSource> = listOf(
+        DetailSource("http://ip-api.com/json/?fields=status,countryCode,isp,org,as,asname,proxy,hosting,mobile,query", ::parseIpApi),
+        DetailSource("https://ipapi.co/json/", ::parseIpApiCo),
+        DetailSource("https://ipwho.is/", ::parseIpWhoIs)
+    )
+
+    /** 明细链整体软截止：三个源都不答也只是让面板继续显示旧值。 */
+    private const val DETAIL_DEADLINE_MS = 16_000L
+
+    /** 非强制刷新时，这份缓存能复用多久（面板反复开关不重复打 API）。 */
+    private const val DETAIL_CACHE_MS = 20_000L
+
     /** IP literal guard: hex digits + '.'/':' only, so a captive-portal HTML page is rejected. */
     private val IP_LITERAL = Regex("^[0-9A-Fa-f:.]+$")
+
+    /** `AS4134` 形式校验。 */
+    private val ASN_LITERAL = Regex("^AS\\d{1,10}$")
+
+    /** 上一次成功拿到的明细（只在内存里；刷新失败时原样返回，UI 不闪空）。 */
+    @Volatile
+    private var lastGood: ProxyNetworkInfo? = null
+
+    @Volatile
+    private var lastGoodAt: Long = 0L
 
     suspend fun probe(context: Context): ProxyNetworkInfo = withContext(Dispatchers.IO) {
         val networkType = networkTypeOf(context)
@@ -93,12 +190,77 @@ object ProxyNetworkProbe {
         ProxyNetworkInfo(countryCode = country, ip = ip, networkType = networkType)
     }
 
-    private fun fetchIp(): String? {
+    /**
+     * 明细探测（面板用）。与 [probe] 共用同一套 [httpGet] / IP 校验，不是第二条请求链路。
+     *
+     * 降级链：ip-api.com → ipapi.co → ipwho.is → 原有 IP 端点（只拿 IP）。
+     * 全部失败时返回[上一次成功值]（网络类型取当前实时值），因此面板不会因为一次刷新失败而清空。
+     *
+     * @param forceRefresh true = 跳过 20 s 内存缓存（下拉/点刷新）
+     */
+    suspend fun probeDetailed(context: Context, forceRefresh: Boolean): ProxyNetworkInfo =
+        withContext(Dispatchers.IO) {
+            val transport = networkTypeOf(context)
+            val cached = lastGood
+            if (!forceRefresh && cached != null &&
+                System.currentTimeMillis() - lastGoodAt < DETAIL_CACHE_MS
+            ) {
+                return@withContext cached.copy(networkType = transport)
+            }
+            if (transport == NetworkType.NONE) {
+                // 没网就别打请求；有旧值就把旧值挂着（网络类型显示无网络）。
+                return@withContext (cached ?: ProxyNetworkInfo()).copy(networkType = NetworkType.NONE)
+            }
+
+            val fresh = fetchDetailed()
+            if (fresh != null) {
+                val result = fresh.copy(networkType = transport)
+                lastGood = result
+                lastGoodAt = System.currentTimeMillis()
+                return@withContext result
+            }
+
+            // 明细源全挂 → 最后兜底只拿 IP（原有三个端点）。
+            val legacy = fetchIpWithSource()
+            if (legacy != null) {
+                val (ip, source) = legacy
+                // 同一个 IP：保留旧的组织/ASN（它们来自更丰富的源），只更新网络类型。
+                val sameIp = cached?.takeIf { it.ip == ip }
+                val result = if (sameIp != null) {
+                    sameIp.copy(networkType = transport)
+                } else {
+                    ProxyNetworkInfo(ip = ip, apiSource = source, networkType = transport)
+                }
+                lastGood = result
+                lastGoodAt = System.currentTimeMillis()
+                return@withContext result
+            }
+
+            (cached ?: ProxyNetworkInfo()).copy(networkType = transport)
+        }
+
+    private fun fetchDetailed(): ProxyNetworkInfo? {
+        val deadline = System.currentTimeMillis() + DETAIL_DEADLINE_MS
+        for (source in DETAIL_SOURCES) {
+            if (System.currentTimeMillis() >= deadline) break
+            val body = httpGet(source.url) ?: continue
+            val parsed = source.parse(body) ?: continue
+            if (parsed.ip != null) return parsed
+        }
+        return null
+    }
+
+    private fun fetchIp(): String? = fetchIpWithSource()?.first
+
+    /** IP + 应答它的端点主机名（用于 apiSource）。 */
+    private fun fetchIpWithSource(): Pair<String, String>? {
         val deadline = System.currentTimeMillis() + DEADLINE_MS
         for (endpoint in IP_ENDPOINTS) {
             if (System.currentTimeMillis() >= deadline) break
             val body = httpGet(endpoint) ?: continue
-            parseIp(body)?.let { return it }
+            val ip = parseIp(body) ?: continue
+            val host = runCatching { URL(endpoint).host }.getOrDefault(endpoint)
+            return ip to host
         }
         return null
     }
@@ -115,6 +277,126 @@ object ProxyNetworkProbe {
             }
         }
         return null
+    }
+
+    // ── 明细源解析（字段容错：缺字段 = null / 空列表，绝不补默认值）────────────────
+
+    /**
+     * ip-api.com（首选，字段最全）。真实应答（2026-11 实测）：
+     * `{"status":"success","countryCode":"CN","isp":"Chinanet","org":"Chinanet SN",
+     *   "as":"AS4134 CHINANET BACKBONE","mobile":false,"proxy":false,"hosting":false,
+     *   "query":"1.81.129.30"}`
+     *
+     * 免费版**不提供** IP 质量等级（`level` 恒为 null）与风险评分，只有三个布尔标记。
+     */
+    private fun parseIpApi(body: String): ProxyNetworkInfo? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (json.optString("status") != "success") return null
+        val ip = json.optString("query").takeIf { looksLikeIp(it) } ?: return null
+        val mobile = json.optBoolean("mobile", false)
+        val hosting = json.optBoolean("hosting", false)
+        val proxy = json.optBoolean("proxy", false)
+        val tags = buildList {
+            if (proxy) add("proxy")
+            if (hosting) add("hosting")
+            if (mobile) add("mobile")
+        }
+        return ProxyNetworkInfo(
+            countryCode = normalizeCountryCode(json.optString("countryCode")),
+            ip = ip,
+            organization = json.optString("org").ifBlank { json.optString("isp") }.ifBlank { null },
+            asn = normalizeAsn(json.optString("as").substringBefore(' ')),
+            ipType = when {
+                mobile -> "mobile"
+                // hosting = 机房/云主机；三个标记都为 false 时按「非机房」归到住宅/企业。
+                hosting -> "datacenter"
+                proxy -> "proxy"
+                else -> "residential"
+            },
+            riskTags = tags,
+            apiSource = "ip-api.com"
+        )
+    }
+
+    /** ipapi.co（HTTPS 兜底）：`ip` / `country_code` / `org`（"AS15169 Google LLC"）/ `asn` / `type`。 */
+    private fun parseIpApiCo(body: String): ProxyNetworkInfo? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (json.optBoolean("error", false)) return null
+        val ip = json.optString("ip").takeIf { looksLikeIp(it) } ?: return null
+        val org = json.optString("org").ifBlank { null }
+        val asn = normalizeAsn(
+            json.optString("asn").ifBlank { org?.substringBefore(' ').orEmpty() }
+        )
+        return ProxyNetworkInfo(
+            countryCode = normalizeCountryCode(json.optString("country_code")),
+            ip = ip,
+            organization = org,
+            asn = asn,
+            ipType = mapApiTypeToken(json.optString("type")),
+            apiSource = "ipapi.co"
+        )
+    }
+
+    /**
+     * ipwho.is（HTTPS 兜底）：`ip` / `country_code` / `connection.{asn,org,isp}`，
+     * 部分线路还会给 `security.{proxy,vpn,hosting,tor}`。
+     * 注意它的顶层 `type` 是 **IP 版本**（IPv4/IPv6），不是机房/住宅类型，不能当 ipType 用。
+     */
+    private fun parseIpWhoIs(body: String): ProxyNetworkInfo? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        if (!json.optBoolean("success", true)) return null
+        val ip = json.optString("ip").takeIf { looksLikeIp(it) } ?: return null
+        val connection = json.optJSONObject("connection")
+        val isp = connection?.optString("isp").orEmpty()
+        val org = connection?.optString("org").orEmpty()
+        val asnNumber = connection?.optInt("asn", 0) ?: 0
+        val asn = if (asnNumber > 0) "AS$asnNumber" else normalizeAsn(connection?.optString("asn").orEmpty())
+        val security = json.optJSONObject("security")
+        val tags = buildList {
+            if (security?.optBoolean("proxy", false) == true) add("proxy")
+            if (security?.optBoolean("vpn", false) == true) add("vpn")
+            if (security?.optBoolean("hosting", false) == true) add("hosting")
+            if (security?.optBoolean("tor", false) == true) add("tor")
+        }
+        return ProxyNetworkInfo(
+            countryCode = normalizeCountryCode(json.optString("country_code")),
+            ip = ip,
+            // org 更具体（信通院/机房名），isp 更偏运营商；优先 org。
+            organization = org.ifBlank { isp }.ifBlank { null },
+            asn = asn,
+            ipType = when {
+                security?.optBoolean("hosting", false) == true -> "datacenter"
+                security?.optBoolean("proxy", false) == true ||
+                    security?.optBoolean("vpn", false) == true ||
+                    security?.optBoolean("tor", false) == true -> "proxy"
+                else -> null
+            },
+            riskTags = tags,
+            apiSource = "ipwho.is"
+        )
+    }
+
+    /** ipapi.co 的 `type` 只认已知取值，别的字符串一律忽略（不猜）。 */
+    private fun mapApiTypeToken(raw: String): String? = when (raw.trim().lowercase()) {
+        "residential" -> "residential"
+        "business" -> "residential"
+        "hosting" -> "datacenter"
+        "datacenter" -> "datacenter"
+        "mobile" -> "mobile"
+        "proxy" -> "proxy"
+        else -> null
+    }
+
+    private fun normalizeCountryCode(raw: String): String? {
+        val code = raw.trim()
+        return code.takeIf { it.length == 2 && it.all { ch -> ch.isLetter() } }?.uppercase()
+    }
+
+    private fun normalizeAsn(raw: String): String? {
+        val value = raw.trim().uppercase()
+        if (value.isEmpty()) return null
+        val withPrefix = if (value.startsWith("AS")) value else "AS$value"
+        return withPrefix.takeIf { ASN_LITERAL.matches(it) }
     }
 
     private fun httpGet(url: String): String? {
@@ -188,6 +470,26 @@ private fun transportOf(caps: NetworkCapabilities): NetworkType? = when {
 }
 
 private const val IP_REFRESH_INTERVAL_MS = 60_000L
+
+/** 一个明细端点 + 它自己的解析器（每个源的 JSON 形状都不一样，解析器不外置）。 */
+private class DetailSource(
+    val url: String,
+    val parse: (String) -> ProxyNetworkInfo?
+)
+
+/**
+ * 出站 IP 面板的数据入口。
+ *
+ * 与启动卡片的 [rememberProxyNetworkInfo] 共用 [ProxyNetworkProbe] 的 HTTP 与 IP 校验，
+ * 只是走「字段丰富」的那条降级链。失败返回上一次成功值（[ProxyNetworkProbe] 内的内存缓存），
+ * 所以面板刷新失败不会清空已有数据，也不会伪造任何字段。
+ *
+ * @param forceRefresh true = 用户点了刷新，跳过 20 s 缓存
+ */
+suspend fun fetchDetailedNetworkInfo(
+    context: Context,
+    forceRefresh: Boolean = false
+): ProxyNetworkInfo = ProxyNetworkProbe.probeDetailed(context, forceRefresh)
 
 /**
  * Wires [ProxyNetworkProbe] into composition.

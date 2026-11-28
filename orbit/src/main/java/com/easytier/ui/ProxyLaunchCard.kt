@@ -91,6 +91,8 @@ import kotlin.math.sin
  * @param networkInfo exit IP / country code / transport, see [rememberProxyNetworkInfo]
  * @param uptimeText formatted uptime from the dashboard's existing 1 s ticker
  * @param orgName the EasyTier network name of the active config (`ConfigState.networkName`)
+ * @param hideIp true = IP 脱敏显示（`113...60`）；只影响显示，不影响数据与代理
+ * @param onIpClick 点 IP 区域打开「出站 IP」详情面板；null = 该区域不可点
  */
 @Composable
 fun ProxyLaunchCard(
@@ -101,6 +103,8 @@ fun ProxyLaunchCard(
     onStart: () -> Unit,
     onStop: () -> Unit,
     langZh: Boolean,
+    hideIp: Boolean = false,
+    onIpClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = currentColors()
@@ -245,15 +249,28 @@ fun ProxyLaunchCard(
                 Spacer(Modifier.height(12.dp))
 
                 // ── 2. network: country | exit IP + transport ──
+                // 点这块（含 IP）打开出站 IP 详情面板。press = glassPress（缩放反馈 + 独立
+                // interactionSource），与右侧启动按钮的 clickable 完全隔离，不会互相触发。
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (onIpClick != null) {
+                                Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .glassPress(onClick = onIpClick)
+                            } else {
+                                Modifier
+                            }
+                        ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CountryChip(code = networkInfo.countryCode, colors = colors, glass = glass, isDark = isDark, universal = universal)
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = networkInfo.ip ?: "--",
+                            // 隐藏 IP 只改这一行显示：真实网络信息与代理链路完全不受影响。
+                            text = (if (hideIp) IpMask.mask(networkInfo.ip) else networkInfo.ip) ?: "--",
                             color = colors.textPrimary,
                             fontSize = 21.sp,
                             fontWeight = FontWeight.Bold,

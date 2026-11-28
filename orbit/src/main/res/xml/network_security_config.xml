@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文 HTTP 白名单：只对 ip-api.com 开（它的免费版没有 HTTPS）。
+  base-config 保持 cleartextTrafficPermitted="false"，因此 targetSdk 34 下其余所有域名
+  仍然禁止明文 —— 不是 android:usesCleartextTraffic="true" 的全局放开。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">ip-api.com</domain>
+    </domain-config>
+</network-security-config>

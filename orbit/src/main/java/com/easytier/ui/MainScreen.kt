@@ -142,7 +142,7 @@ fun MainScreen(
         delay(5_000)
         if (!autoCheckUpdateEnabled(ctx)) return@LaunchedEffect
         try {
-            val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+            val info = withContext(Dispatchers.IO) { fetchLatestRelease(readUpdateChannel(ctx)) }
             if (isNewerVersion(info.tag, currentVersion)) {
                 updateInfo = info
                 updateDialogVisible = true
@@ -1428,6 +1428,8 @@ fun AboutPage(
 
     // 手动检查的按钮状态留在本页；updateInfo / 弹窗状态在 MainScreen（启动检查共用）。
     var updateStatus by remember { mutableStateOf<String?>(null) }
+    // 更新通道（开发版 / 稳定版）：本页选择、立即持久化，检查更新时按通道拉取。
+    var updateChannel by remember { mutableStateOf(readUpdateChannel(ctx)) }
     var checking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -1593,7 +1595,7 @@ fun AboutPage(
                                 updateStatus = null
                                 scope.launch {
                                     try {
-                                        val info = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                        val info = withContext(Dispatchers.IO) { fetchLatestRelease(readUpdateChannel(ctx)) }
                                         if (isNewerVersion(info.tag, version)) {
                                             // 新版本 → 交给 MainScreen 的统一弹窗（release notes + 下载）
                                             onNewVersionFound(info)
@@ -1601,7 +1603,9 @@ fun AboutPage(
                                             updateStatus = "latest"
                                         }
                                     } catch (_: Exception) {
-                                        updateStatus = "error"
+                                        // 稳定版通道在「还没有正式发布」时必然失败，给可操作的提示。
+                                        updateStatus =
+                                            if (readUpdateChannel(ctx) == CHANNEL_STABLE) "error_stable" else "error"
                                     }
                                     checking = false
                                 }
@@ -1625,6 +1629,8 @@ fun AboutPage(
                                         checking -> T("正在检查更新…", "Checking…", langZh)
                                         updateStatus == "latest" ->
                                             T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
+                                        updateStatus == "error_stable" ->
+                                            T("稳定版暂无正式发布，可切换到开发版", "No stable release yet — switch to Dev", langZh)
                                         updateStatus == "error" ->
                                             T("检查失败，请稍后重试（需可访问 GitHub）", "Check failed — retry later (GitHub must be reachable)", langZh)
                                         else -> T("当前版本 v$version · 点击检查", "Current v$version · tap to check", langZh)
@@ -1632,6 +1638,7 @@ fun AboutPage(
                                     color = when {
                                         updateStatus == "latest" && !checking -> colors.statusGood
                                         updateStatus == "error" && !checking -> colors.statusBad
+                                        updateStatus == "error_stable" && !checking -> colors.textTertiary
                                         else -> colors.textTertiary
                                     },
                                     fontSize = 11.sp
@@ -1657,6 +1664,36 @@ fun AboutPage(
                     }
 
                     Spacer(Modifier.height(20.dp))
+
+                    // ── 更新通道：开发版（含 prerelease）/ 稳定版（只认正式发布）──
+                    HmDropdownField(
+                        label = T("更新通道", "Update channel", langZh),
+                        icon = "⇅",
+                        options = listOf(
+                            HmDropdownOption(
+                                label = T("开发版", "Dev", langZh),
+                                value = CHANNEL_DEV,
+                                hint = T("接收全部构建，含 [开发版] 标记者", "Every build, incl. [dev] tagged", langZh)
+                            ),
+                            HmDropdownOption(
+                                label = T("稳定版", "Stable", langZh),
+                                value = CHANNEL_STABLE,
+                                hint = T("只接收正式发布的版本", "Released versions only", langZh)
+                            )
+                        ),
+                        selectedIndex = if (updateChannel == CHANNEL_STABLE) 1 else 0,
+                        onSelect = { idx ->
+                            updateChannel = if (idx == 1) CHANNEL_STABLE else CHANNEL_DEV
+                            writeUpdateChannel(ctx, updateChannel)
+                            updateStatus = null   // 切通道后旧结果作废
+                        },
+                        hint = T(
+                            "开发版跟进每次构建；稳定版只在正式发布时提示更新",
+                            "Dev follows every build; Stable only on official releases",
+                            langZh
+                        ),
+                        card = true
+                    )
 
                     if (isConnected && uptimeText.isNotEmpty()) {
                         AboutRow(
@@ -1771,9 +1808,19 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
 private const val UPDATE_API =
     "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases?per_page=1"
 
+/** 稳定版端点：只返回正式发布（prerelease 被跳过；没有正式版时 404）。 */
+private const val UPDATE_API_STABLE =
+    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
+
+/** 更新通道：开发版（含 prerelease，默认）/ 稳定版（只认正式发布）。 */
+internal const val CHANNEL_DEV = "dev"
+internal const val CHANNEL_STABLE = "stable"
+
 /** 「自动检查更新」偏好：与 MainActivity 的其他状态放同一个 SharedPreferences 文件。 */
 private const val UPDATE_PREFS = "easytier_state"
 private const val KEY_AUTO_CHECK_UPDATE = "auto_check_update"
+/** 更新通道偏好（dev / stable）。 */
+private const val KEY_UPDATE_CHANNEL = "update_channel"
 
 /** 当前安装包的 versionName；读不到时退回 "0.1.5"（与关于页展示保持一致）。 */
 private fun appVersionName(ctx: Context): String = try {
@@ -1800,10 +1847,30 @@ data class UpdateInfo(
 )
 
 /** Blocking GET of the latest release. Always call from Dispatchers.IO. */
-private fun fetchLatestRelease(): UpdateInfo = fetchLatestReleaseFrom(UPDATE_API)
+/** 更新通道选择，默认开发版（当前所有发布都是开发版，稳定版会是空的）。 */
+internal fun readUpdateChannel(ctx: Context): String =
+    ctx.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_UPDATE_CHANNEL, CHANNEL_DEV) ?: CHANNEL_DEV
+
+internal fun writeUpdateChannel(ctx: Context, channel: String) {
+    ctx.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE).edit()
+        .putString(KEY_UPDATE_CHANNEL, channel).apply()
+}
+
+/**
+ * 按通道拉取最新版本：
+ *  - [CHANNEL_DEV]    → `/releases?per_page=1`（列表首项，含 prerelease）
+ *  - [CHANNEL_STABLE] → `/releases/latest`（仅正式发布；无正式版则 404）
+ */
+internal fun fetchLatestRelease(channel: String = CHANNEL_DEV): UpdateInfo =
+    if (channel == CHANNEL_STABLE) {
+        fetchLatestReleaseFrom(UPDATE_API_STABLE, isList = false)
+    } else {
+        fetchLatestReleaseFrom(UPDATE_API, isList = true)
+    }
 
 /** Single-endpoint fetch; throws on HTTP/parse failure so the caller can try the next mirror. */
-private fun fetchLatestReleaseFrom(apiUrl: String): UpdateInfo {
+private fun fetchLatestReleaseFrom(apiUrl: String, isList: Boolean): UpdateInfo {
     val conn = URL(apiUrl).openConnection() as HttpURLConnection
     conn.requestMethod = "GET"
     conn.setRequestProperty("Accept", "application/vnd.github+json")
@@ -1814,10 +1881,14 @@ private fun fetchLatestReleaseFrom(apiUrl: String): UpdateInfo {
         val code = conn.responseCode
         if (code != HttpURLConnection.HTTP_OK) throw IllegalStateException("HTTP $code")
         val text = conn.inputStream.bufferedReader().use { it.readText() }
-        // /releases 返回数组：第一项就是最新版本（含 prerelease）。
-        val releases = org.json.JSONArray(text)
-        if (releases.length() == 0) throw IllegalStateException("no releases published")
-        val root = releases.getJSONObject(0)
+        // /releases 返回数组（首项=最新，含 prerelease）；/releases/latest 返回单个对象。
+        val root = if (isList) {
+            val releases = org.json.JSONArray(text)
+            if (releases.length() == 0) throw IllegalStateException("no releases published")
+            releases.getJSONObject(0)
+        } else {
+            JSONObject(text)
+        }
         var apkUrl: String? = null
         val assets = root.optJSONArray("assets")
         if (assets != null) {

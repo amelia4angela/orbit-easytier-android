@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Kotlin 2.3.21 + AGP 8.2.2 的已知工具链误报（NOT a code problem）：
+
+      AGP 8.2.2 内置的 lint 31.2 只认得 ≤1.9 的 Kotlin 模块元数据，读不了 kotlin-stdlib 2.3.21
+      （metadata 2.3.0 / expected 1.9.0），于是降级解析，把 Kotlin 从 1.0 起就有的 inline 扩展函数
+      `Iterable<T>.forEach {}` 误判成 `java.lang.Iterable#forEach`（该 Java 默认方法才是 API 24）。
+
+      受影响调用点（全部是 Kotlin 扩展，minSdk 23 上完全安全）：
+        MainActivity.kt:1738 / 1755          r.warnings.forEach { … }
+        ConfigEditActivity.kt:284            configNames.forEach { … }
+        ConfigEditActivity.kt:602 / 626      result.warnings.forEach { … }
+
+      只忽略这一条误判消息，QuickStartTile 等真实的高 API 调用仍会被正常报出。
+      升级 AGP 到 ≥8.11（其 lint 支持新元数据）后，删除本抑制文件即可。
+    -->
+    <issue id="NewApi">
+        <ignore regexp="java\.lang\.Iterable#forEach" />
+    </issue>
+</lint>

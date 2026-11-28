@@ -2,10 +2,14 @@ package com.easytier.ui
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -484,6 +488,12 @@ private fun transportOf(caps: NetworkCapabilities): NetworkType? = when {
 
 private const val IP_REFRESH_INTERVAL_MS = 60_000L
 
+/** 未启动代理时的慢速刷新：仍然跟踪设备出口 IP，只是不每分钟打一次第三方 API。 */
+private const val IP_IDLE_REFRESH_INTERVAL_MS = 180_000L
+
+/** 切网时合并 NetworkCallback 连发事件的抖动窗口。 */
+private const val NETWORK_CHANGE_DEBOUNCE_MS = 600L
+
 /** 一个明细端点 + 它自己的解析器（每个源的 JSON 形状都不一样，解析器不外置）。 */
 private class DetailSource(
     val url: String,
@@ -507,24 +517,75 @@ suspend fun fetchDetailedNetworkInfo(
 /**
  * Wires [ProxyNetworkProbe] into composition.
  *
- * @param active true while the tunnel is up. On `false` the info is cleared (no leftover exit IP
- *   after a disconnect) and no request is made; on `true` it probes immediately — that is the
- *   "拉一次 after a successful start" — then refreshes every 60 s.
+ * 语义（重要）：这里探测并展示的是**设备出口 IP**——手机浏览网页时在公网上露出的地址，
+ * 与 EasyTier 隧道内的虚拟 IP（`10.144.144.x`）是两回事。所以「代理没启动却显示 IP」
+ * 是正确行为，不是残留、也不是泄漏：用户随时能看到自己当前的公网出口。
+ *
+ * 既然语义与连接状态无关，[active] 就**不再决定有没有数据**，只决定两件事：
+ *  - 刷新频率：运行中 60 s 一次；未运行 180 s 一次（仍跟踪出口，只是省流量/省电）
+ *  - 提示含义：连接状态本身由启动卡片的状态行表达，网络行只描述「设备当前出口」
+ *
+ * 断开连接不清空：刷新失败（无网 / 端点全挂）时保留上一次成功结果，只更新网络类型。
+ * 网络切换（Wi-Fi ↔ 移动数据、VPN 起落）由 [ConnectivityManager.NetworkCallback] 触发立即重查。
  */
 @Composable
 fun rememberProxyNetworkInfo(active: Boolean): ProxyNetworkInfo {
     val context = LocalContext.current
+
+    // 初值只有网络类型（还没有 IP）；下面第一次 effect 立刻查一次，App 一起来就有数。
     var info by remember {
         mutableStateOf(ProxyNetworkInfo(networkType = networkTypeOf(context)))
     }
-    LaunchedEffect(active) {
-        if (!active) {
-            info = ProxyNetworkInfo(networkType = networkTypeOf(context))
-            return@LaunchedEffect
+
+    // 网络切换代次：Wi-Fi ↔ 移动数据、VPN 起落都会 +1，用来立刻重查一次。
+    var networkGeneration by remember { mutableIntStateOf(0) }
+    DisposableEffect(context) {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                networkGeneration++
+            }
+
+            override fun onLost(network: Network) {
+                networkGeneration++
+            }
         }
+        if (cm == null) {
+            onDispose { }
+        } else {
+            // registerNetworkCallback(NetworkRequest) 是 API 21+，minSdk 23 无需分支；
+            // 注册失败（权限/系统限制）只是没有「切网即查」，不影响周期刷新。
+            val registered = runCatching {
+                cm.registerNetworkCallback(
+                    NetworkRequest.Builder()
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .build(),
+                    callback
+                )
+            }.isSuccess
+            onDispose {
+                if (registered) runCatching { cm.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+
+    // 分支说明：
+    //  - 进入组合立刻查一次（不等 active，也不管上次是断开还是连接）
+    //  - active 变化 / 网络切换 / 重进页面都会重启本 effect → 立即重查
+    //  - 之后按 active 决定的周期继续刷新（运行中 60 s，未运行 180 s）
+    LaunchedEffect(active, networkGeneration) {
+        // 网络刚变化：等 600 ms 合并 onAvailable/onLost 的连发，避免一次切网打好几轮请求。
+        if (networkGeneration > 0) delay(NETWORK_CHANGE_DEBOUNCE_MS)
         while (true) {
-            info = ProxyNetworkProbe.probe(context)
-            delay(IP_REFRESH_INTERVAL_MS)
+            val fresh = ProxyNetworkProbe.probe(context)
+            // 没网 / 端点全挂时 fresh.ip == null：保留上一次成功结果，只更新网络类型，
+            // 断开连接或电梯里断网都不会把 IP 变成 `--`。
+            info = if (fresh.ip == null && info.ip != null) {
+                info.copy(networkType = fresh.networkType)
+            } else {
+                fresh
+            }
+            delay(if (active) IP_REFRESH_INTERVAL_MS else IP_IDLE_REFRESH_INTERVAL_MS)
         }
     }
     return info

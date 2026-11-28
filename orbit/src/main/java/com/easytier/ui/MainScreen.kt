@@ -2,22 +2,24 @@ package com.easytier.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Subject
+import androidx.compose.material.icons.automirrored.rounded.Subject
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.Subject
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -31,7 +33,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import android.graphics.Bitmap
@@ -40,12 +41,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import com.easytier.ui.glass.GlassMotion
 import com.easytier.ui.glass.GlassRadius
 import com.easytier.AppLogger
 import com.easytier.ui.glass.GlassTheme
@@ -248,6 +247,34 @@ fun MainScreen(
     val motionTabIn = motionMs(240)
     val motionTabOut = motionMs(180)
     val darkBg = LocalIsDarkTheme.current
+
+    // ── 底栏数据：顺序 = 视觉顺序，图标成对（未选中线性 / 选中填充），文案走原有 T() ──
+    // navTabs 只做「下标 ↔ Tab 枚举」映射，pageStack / BackHandler / tab 过渡逻辑一行没动。
+    val navTabs = remember { listOf(Tab.STATUS, Tab.CONFIG, Tab.LOGS, Tab.MORE) }
+    val navItems = remember(langZh) {
+        listOf(
+            LiquidGlassNavItem(
+                icon = Icons.Outlined.Dashboard,
+                selectedIcon = Icons.Rounded.Dashboard,
+                label = T("仪表盘", "Dashboard", langZh)
+            ),
+            LiquidGlassNavItem(
+                icon = Icons.Outlined.Description,
+                selectedIcon = Icons.Rounded.Description,
+                label = T("配置", "Config", langZh)
+            ),
+            LiquidGlassNavItem(
+                icon = Icons.AutoMirrored.Outlined.Subject,
+                selectedIcon = Icons.AutoMirrored.Rounded.Subject,
+                label = T("日志", "Logs", langZh)
+            ),
+            LiquidGlassNavItem(
+                icon = Icons.Outlined.Build,
+                selectedIcon = Icons.Rounded.Build,
+                label = T("设置", "Settings", langZh)
+            )
+        )
+    }
     GlassTheme(level = glassLevel.value) {
         // 图片背景：填充更实 + 模糊更强（LocalGlassBoost），二级页底色按 LocalBgSurface 走。
         CompositionLocalProvider(
@@ -278,10 +305,17 @@ fun MainScreen(
                 modifier = modifier.fillMaxSize()
             ) {
                 // Content area
+                // 底部留白不再写死：由底栏组件推导（胶囊高度 + 底距 + 系统手势条 + 呼吸）
+                // —— 改底栏高度时这里自动跟着变，内容永不被悬浮胶囊遮挡。
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (subPage != null) 0.dp else 72.dp)
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 16.dp,
+                            bottom = if (subPage != null) 0.dp else liquidGlassNavBarBottomPadding()
+                        )
                 ) {
                     // 二三级页进出转场：进入 = 新页从右滑入 + 淡入（it/4，260ms）；
                     // 返回 = 当前页向右滑出 + 淡出。同一套 HarmonyEasing，pageStack 逻辑不变。
@@ -444,12 +478,13 @@ fun MainScreen(
                     }
                 }
 
-                // Bottom Navigation
+                // Bottom Navigation（iOS 26 液态玻璃悬浮胶囊，组件见 LiquidGlassNavigationBar.kt）
+                // Tab 数量 / 名称 / 顺序 / 点击语义 / pageStack 全部不变：这里只是把枚举映射成下标。
                 if (subPage == null) {
-                    BottomNavigationBar(
-                        currentTab = currentTab,
-                        onTabSelected = { currentTab = it },
-                        langZh = langZh,
+                    LiquidGlassNavigationBar(
+                        items = navItems,
+                        selectedIndex = navTabs.indexOf(currentTab).coerceAtLeast(0),
+                        onSelect = { index -> navTabs.getOrNull(index)?.let { currentTab = it } },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
@@ -691,140 +726,6 @@ private fun LogsTab(langZh: Boolean) {
             }
         }
         Spacer(Modifier.height(80.dp))
-    }
-}
-
-// ═══════════════════════════════════════════════════
-//  Bottom Navigation
-// ═══════════════════════════════════════════════════
-
-@Composable
-private fun BottomNavigationBar(
-    currentTab: Tab,
-    onTabSelected: (Tab) -> Unit,
-    langZh: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val glass = glassColors()
-    // 常驻组件：形状/颜色/画笔只算一次，别在每帧重新分配（性能要求）。
-    val barShape = remember { glassShape(GlassRadius.xxl) }              // 悬浮胶囊 28dp
-    val indicatorShape = remember { glassShape(GlassRadius.lg) }         // 选中底 20dp
-    val indicatorFill = glass.accentSoft                                 // 淡蓝，不压住乳白玻璃
-    val indicatorRim = remember(glass.accent) { glass.accent.copy(alpha = 0.26f) }
-
-    val items = remember(langZh) {
-        listOf(
-            Triple(Icons.Rounded.Dashboard, T("仪表盘", "Dashboard", langZh), Tab.STATUS),
-            Triple(Icons.Rounded.Description, T("配置", "Config", langZh), Tab.CONFIG),
-            Triple(Icons.Rounded.Subject, T("日志", "Logs", langZh), Tab.LOGS),
-            Triple(Icons.Rounded.Build, T("设置", "Settings", langZh), Tab.MORE)
-        )
-    }
-    val selectedIndex = items.indexOfFirst { it.third == currentTab }.coerceAtLeast(0)
-
-    // 选中指示器：动画的是 *槽位*（0f..n-1），位移由 tab 宽度推出 —— 值在 offset lambda
-    // 里读取，所以滑动只走 layout，不触发重组。spring 近临界阻尼（无回弹抖动）。
-    val slot by animateFloatAsState(
-        targetValue = selectedIndex.toFloat(),
-        animationSpec = GlassMotion.indicatorSpring,
-        label = "navSlot"
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-    ) {
-        // ── 悬浮乳白玻璃胶囊 ────────────────────────────────────────────
-        // GlassSurface 自带**唯一**的一层背景模糊（HIGH/BALANCED；LITE 退化成半透明填充），
-        // intensity 上调一档让填充更实（对齐 ProxyLaunchCard 的乳白观感），柔和外阴影 + 玻璃描边。
-        // tab 数量 / 页名 / 点击回调全部沿用上面的 items 与 onTabSelected。
-        GlassSurface(
-            modifier = Modifier.fillMaxWidth(),
-            radius = GlassRadius.xxl,
-            shape = barShape,
-            intensity = if (glass.isDark) 1.25f else 1.05f,
-            shadowElevation = 18.dp,
-            contentPadding = PaddingValues(6.dp)
-        ) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                val itemWidth = maxWidth / items.size
-                val itemWidthPx = with(LocalDensity.current) { itemWidth.toPx() }
-
-                // 选中指示器：滑动胶囊（spring），淡蓝填充 + 一条淡淡 accent 描边。
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset((itemWidthPx * slot).roundToInt(), 0) }
-                        .width(itemWidth)
-                        .fillMaxHeight()
-                        .padding(horizontal = 5.dp)
-                        .clip(indicatorShape)
-                        .background(indicatorFill, indicatorShape)
-                        .border(0.5.dp, indicatorRim, indicatorShape)
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                ) {
-                    items.forEachIndexed { index, (icon, label, tab) ->
-                        val isActive = index == selectedIndex
-                        // 图标 + 文字同时变色（选中 accent / 未选中次级灰）——
-                        // 指示器是淡蓝而不是实心蓝，所以滑动途中不需要「延迟点亮」也不会白压白。
-                        val tint by animateColorAsState(
-                            targetValue = if (isActive) glass.accent else glass.textTertiary,
-                            animationSpec = GlassMotion.quickEase(),
-                            label = "navTint"
-                        )
-                        val iconScale by animateFloatAsState(
-                            targetValue = if (isActive) 1.06f else 1f,
-                            animationSpec = GlassMotion.spatial,
-                            label = "navIconScale"
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(indicatorShape)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onTabSelected(tab) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
-                                    tint = tint,
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .graphicsLayer {
-                                            scaleX = iconScale
-                                            scaleY = iconScale
-                                        }
-                                )
-                                Text(
-                                    text = label,
-                                    color = tint,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

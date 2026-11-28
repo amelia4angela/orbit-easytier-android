@@ -297,7 +297,8 @@ fun MainScreen(
                                 myNodeItem = myNodeItem,
                                 peerItems = peerItems,
                                 langZh = langZh,
-                                connectionStartTime = connectionStartTime
+                                connectionStartTime = connectionStartTime,
+                                networkName = config.networkName.ifBlank { currentConfigName }
                             )
                             Tab.CONFIG -> ConfigTab(
                                 config = config,
@@ -698,7 +699,8 @@ private fun StatusTab(
     myNodeItem: PeerInfoItem?,
     peerItems: List<PeerInfoItem>,
     langZh: Boolean,
-    connectionStartTime: Long = 0L
+    connectionStartTime: Long = 0L,
+    networkName: String = ""
 ) {
     val scrollState = rememberScrollState()
     val isConnected = connectionState.status == ConnectionStatus.RUNNING ||
@@ -718,9 +720,8 @@ private fun StatusTab(
         }
     }
 
-    val latency = myNodeItem?.let {
-        if (it.latencyUs > 0) "${it.latencyUs / 1000} ms" else ""
-    } ?: ""
+    // 出口 IP / 国家码 / 网络类型：只在隧道运行期间探测（启动后立即一次，之后每 60s），断开清空。
+    val networkInfo = rememberProxyNetworkInfo(active = isConnected)
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -729,15 +730,15 @@ private fun StatusTab(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ── FlClash-style status card with blob button ──
-            FlClashStatusCard(
+            // ── Liquid Glass 启动卡片（状态 / 出口 IP / 网络类型 / 时长 / 组织名 + 蓝色圆形按钮）──
+            // 启停仍走 onToggleConnection → MainActivity 的 startEasyTier / stopEasyTier 原链路。
+            ProxyLaunchCard(
                 state = connectionState,
-                onClick = onToggleConnection,
-                nodeLabel = myNodeItem?.ip ?: connectionState.subLabel,
-                nodeSub = myNodeItem?.let { "${it.hostname}  ·  ${it.protocol}" } ?: "",
-                uptime = uptimeText,
-                peerCount = peerItems.size,
-                latency = latency,
+                networkInfo = networkInfo,
+                uptimeText = uptimeText,
+                orgName = networkName,
+                onStart = onToggleConnection,
+                onStop = onToggleConnection,
                 langZh = langZh
             )
 

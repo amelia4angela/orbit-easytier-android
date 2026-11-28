@@ -31,6 +31,8 @@ import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.GlassSpace
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.effects.GlassBackdropSlice
+import com.easytier.ui.glass.effects.GlassShaderSpec
+import com.easytier.ui.glass.effects.LocalGlassRefraction
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.effects.rememberGlassPerformance
 import com.easytier.ui.glass.glassColors
@@ -92,6 +94,7 @@ fun Modifier.glassPress(
  *
  * @param blurRadius override for the backdrop blur; defaults to the level's value
  * @param intensity 0..1 dial for fill alpha / rim strength
+ * @param refraction AGSL refraction tunables (HIGH + API 33+ only, see GlassRefraction.kt)
  * @param contentPadding padding applied between the rim and [content]
  */
 @Composable
@@ -104,6 +107,7 @@ fun GlassSurface(
     blurRadius: Dp? = null,
     shadowElevation: Dp = 0.dp,
     contentPadding: PaddingValues = PaddingValues(GlassSpace.lg),
+    refraction: GlassShaderSpec = LocalGlassRefraction.current,
     content: @Composable BoxScope.() -> Unit
 ) {
     val blurDp = blurRadius ?: level.backdropBlur.dp
@@ -113,7 +117,9 @@ fun GlassSurface(
             modifier = Modifier.matchParentSize(),
             shape = shape,
             blurRadius = blurDp,
-            level = level
+            level = level,
+            radius = radius,
+            refraction = refraction
         )
         Box(
             Modifier
@@ -123,7 +129,8 @@ fun GlassSurface(
                     radius = radius,
                     intensity = intensity,
                     shape = shape,
-                    shadowElevation = shadowElevation
+                    shadowElevation = shadowElevation,
+                    refraction = refraction
                 )
         )
         Box(modifier = Modifier.padding(contentPadding), content = content)

@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,6 +50,8 @@ import com.easytier.ui.glass.components.GlassSurface
 import com.easytier.ui.glass.components.GlassSwitch
 import com.easytier.ui.glass.components.GlassTextField
 import com.easytier.ui.glass.components.GlassTopBar
+import com.easytier.ui.glass.effects.GlassRefractionSupport
+import com.easytier.ui.glass.effects.GlassShaderSpec
 import com.easytier.ui.glass.effects.GlassSky
 import com.easytier.ui.glass.effects.glassSurface
 import com.easytier.ui.glass.effects.rememberGlassPerformance
@@ -86,6 +89,7 @@ fun GlassShowcase(
         var blurIndex by remember { mutableStateOf(2) }
         var text by remember { mutableStateOf("") }
         var chipIndex by remember { mutableStateOf(0) }
+        var refraction by remember { mutableStateOf(0.55f) }
 
         val blurSteps = listOf(0, 10, 20, 40)
 
@@ -372,6 +376,64 @@ fun GlassShowcase(
                     }
                 }
 
+                // ── 10b. AGSL refraction (HIGH + API 33+) ──────────────
+                SectionCard(title = T("折射 Refraction", "Refraction", langZh), langZh = langZh) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            T("边缘折射强度", "Rim refraction strength", langZh),
+                            color = colors.textSecondary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${(refraction * 100).roundToInt()}%",
+                            color = colors.accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    GlassSlider(
+                        value = refraction,
+                        onValueChange = { refraction = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    val spec = GlassShaderSpec(refractionStrength = refraction)
+                    Row(horizontalArrangement = Arrangement.spacedBy(GlassSpace.sm)) {
+                        RefractionPreview(
+                            modifier = Modifier.weight(1f),
+                            spec = spec,
+                            label = T("开", "On", langZh)
+                        )
+                        RefractionPreview(
+                            modifier = Modifier.weight(1f),
+                            spec = spec.copy(enabled = false),
+                            label = T("关", "Off", langZh)
+                        )
+                    }
+                    Text(
+                        text = when {
+                            !GlassRefractionSupport.isAvailable -> T(
+                                "系统 < Android 13：AGSL RuntimeShader 不可用，本区完全跳过（不构造 shader，零开销）",
+                                "API < 33: RuntimeShader unavailable — nothing is constructed, zero cost",
+                                langZh
+                            )
+                            level.value != GlassLevel.HIGH -> T(
+                                "仅在「高」档 + Android 13+ 生效，切到高档即可看到差异",
+                                "Only on HIGH + Android 13+ — switch to HIGH to see the difference",
+                                langZh
+                            )
+                            else -> T(
+                                "真实折射：按圆角边缘把已模糊的背景弯折，R/B 色散 ~1.1px；文字永远不被扭曲",
+                                "Real refraction of the blurred backdrop at the rim, R/B split ~1.1px; text is never distorted",
+                                langZh
+                            )
+                        },
+                        color = colors.textTertiary,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+
                 // ── 11 + 12. Theme & render quality ────────────────────
                 SectionCard(title = T("主题与渲染质量", "Theme & quality", langZh), langZh = langZh) {
                     Row(
@@ -534,5 +596,34 @@ private fun SectionCard(
             fontWeight = FontWeight.Medium
         )
         content()
+    }
+}
+
+/**
+ * One half of the refraction A/B pair: the same real [GlassSurface] with the shader spec on or
+ * off. The label sits *above* the material, so it also demonstrates that the refraction pass only
+ * touches the backdrop slice and never the pane's own content.
+ */
+@Composable
+private fun RefractionPreview(
+    spec: GlassShaderSpec,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    val colors = glassColors()
+    GlassSurface(
+        modifier = modifier.height(88.dp),
+        radius = GlassRadius.md,
+        blurRadius = 18.dp,
+        intensity = 0.9f,
+        contentPadding = PaddingValues(GlassSpace.sm),
+        refraction = spec
+    ) {
+        Text(
+            text = label,
+            color = colors.textPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

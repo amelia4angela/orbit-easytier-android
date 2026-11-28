@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.easytier.ui.glass.GlassColors
 import com.easytier.ui.glass.GlassLevel
+import com.easytier.ui.glass.GlassRadius
 import com.easytier.ui.glass.GlassSize
 import com.easytier.ui.glass.LocalGlassLevel
 import com.easytier.ui.glass.glassColors
@@ -191,6 +192,10 @@ private fun Color.scaleAlphaBy(factor: Float): Color =
  * @param shape overrides the shape (e.g. capsule)
  * @param shadowElevation soft drop shadow; 0 for inline panes
  * @param specular paint the extra diagonal specular sheen (HIGH only, ignored otherwise)
+ * @param refraction AGSL refraction spec; when the shader pass is active on this device the
+ *   painted-on chromatic fringe is dropped, because the real dispersion comes from the shader.
+ *   The shader itself is attached where the backdrop lives (GlassBackdropSlice) — a Modifier has
+ *   no children to sample, so `glassSurface` alone can only carry the spec, not refract.
  */
 @Composable
 fun Modifier.glassSurface(
@@ -199,12 +204,19 @@ fun Modifier.glassSurface(
     intensity: Float = 1f,
     shape: Shape = com.easytier.ui.glass.glassShape(radius),
     shadowElevation: Dp = 0.dp,
-    specular: Boolean = true
+    specular: Boolean = true,
+    refraction: GlassShaderSpec = LocalGlassRefraction.current
 ): Modifier {
     val colors = glassColors()
     val perf = rememberGlassPerformance(level)
     val effective = perf.effective
     val fillScale = effective.fillAlpha * intensity.coerceIn(0.15f, 1.5f)
+    // Real, shader-driven optics: only on HIGH, only where RuntimeShader exists. Otherwise the
+    // static gradients below are the whole story (and nothing extra is allocated).
+    val lensActive = effective == GlassLevel.HIGH &&
+        refraction.enabled &&
+        refraction.refractionStrength > 0.001f &&
+        GlassRefractionSupport.isAvailable
 
     var result = this
     if (shadowElevation > 0.dp) {
@@ -246,19 +258,26 @@ fun Modifier.glassSurface(
                         ),
                         shape
                     )
-                    // Chromatic fringe: warm on one diagonal, cool on the other — the cheapest
-                    // honest stand-in for dispersion without a RuntimeShader.
-                    .border(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(
-                            listOf(
-                                Color(0x2EFF6B6B),
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color(0x2E5AC8FA)
+                    .then(
+                        // Chromatic fringe: warm on one diagonal, cool on the other. With the
+                        // AGSL pass running, real per-channel dispersion exists, so the painted
+                        // one would double up and read as a dirty outline.
+                        if (lensActive) {
+                            Modifier
+                        } else {
+                            Modifier.border(
+                                width = 1.5.dp,
+                                brush = Brush.linearGradient(
+                                    listOf(
+                                        Color(0x2EFF6B6B),
+                                        Color.Transparent,
+                                        Color.Transparent,
+                                        Color(0x2E5AC8FA)
+                                    )
+                                ),
+                                shape = shape
                             )
-                        ),
-                        shape = shape
+                        }
                     )
             } else {
                 Modifier
@@ -276,17 +295,32 @@ fun Modifier.glassSurface(
  *
  * Re-draws the sky pattern shifted so pane-local (0,0) maps back onto the sky origin, behind a
  * blur layer clipped to [shape]. No-op when the level cannot blur or there is no [GlassSky].
+ *
+ * On HIGH + API 33+ the composed slice (scaled → blurred → clipped) gets the AGSL refraction
+ * pass as its outer layer, so the shader bends the *blurred* backdrop instead of blurring the
+ * bended one. Everything below HIGH, or below API 33, never constructs a RuntimeShader.
+ *
+ * @param radius corner radius of [shape], used by the shader to follow the rim
+ * @param refraction refraction tunables; `enabled = false` or strength 0 removes the pass
  */
 @Composable
 internal fun GlassBackdropSlice(
     modifier: Modifier,
     shape: Shape,
     blurRadius: Dp,
-    level: GlassLevel
+    level: GlassLevel,
+    radius: Dp = GlassRadius.lg,
+    refraction: GlassShaderSpec = LocalGlassRefraction.current
 ) {
     val sky = LocalGlassSky.current ?: return
     val perf = rememberGlassPerformance(level)
     if (!perf.canBlur || blurRadius <= 0.dp) return
+
+    // Lens only for the real HIGH tier on hardware that has RuntimeShader.
+    val lensActive = perf.effective == GlassLevel.HIGH &&
+        refraction.enabled &&
+        refraction.refractionStrength > 0.001f &&
+        GlassRefractionSupport.isAvailable
 
     var panePos by remember { mutableStateOf(Offset.Zero) }
     // Remember the sky origin/size so the pane redraws when they change.
@@ -296,11 +330,16 @@ internal fun GlassBackdropSlice(
     Box(
         modifier = modifier
             .onGloballyPositioned { panePos = it.positionInRoot() }
+            .then(
+                if (lensActive) Modifier.glassRefractionLens(refraction, radius) else Modifier
+            )
             // HIGH adds a mild lens magnification: the sampled backdrop is scaled about the pane
             // centre, which reads as refraction through a curved surface (no shader, no crash
-            // risk on devices we cannot test). BALANCED/LITE sample 1:1.
+            // risk on devices we cannot test). BALANCED/LITE sample 1:1. When the AGSL pass runs
+            // the scaling is dropped — the shader does the optics, and doubling both would
+            // magnify twice and push the samples outside the pane content.
             .graphicsLayer {
-                val lens = if (level == GlassLevel.HIGH) 1.05f else 1f
+                val lens = if (level == GlassLevel.HIGH && !lensActive) 1.05f else 1f
                 scaleX = lens
                 scaleY = lens
             }

@@ -1626,7 +1626,7 @@ fun AboutPage(
                                         updateStatus == "latest" ->
                                             T("✔ 已是最新版本 v$version", "✔ Latest version v$version", langZh)
                                         updateStatus == "error" ->
-                                            T("检查失败：网络受限（已试 3 个镜像，可稍后重试）", "Check failed — all mirrors unreachable, retry later", langZh)
+                                            T("检查失败，请稍后重试（需可访问 GitHub）", "Check failed — retry later (GitHub must be reachable)", langZh)
                                         else -> T("当前版本 v$version · 点击检查", "Current v$version · tap to check", langZh)
                                     },
                                     color = when {
@@ -1760,11 +1760,16 @@ private fun AboutRow(label: String, value: String?, colors: AppColors) {
  * 更新检查的端点顺序：GitHub 直连 → ghfast 代理 → kkgithub 镜像。
  * 国内直连 api.github.com 经常超时（用户报「连接不到网络」），必须像 PRIVACY.md 那样带镜像链。
  */
-private val UPDATE_API_MIRRORS = listOf(
-    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest",
-    "https://ghfast.top/https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases/latest",
-    "https://api.kkgithub.com/repos/amelia4angela/orbit-easytier-android/releases/latest"
-)
+/**
+ * 单个 GitHub 端点（用户要求只用一个 URL）。
+ *
+ * 关键：**不能用 `/releases/latest`** —— 该端点会跳过所有 prerelease，而本项目
+ * 所有版本都标了「[开发版]」= prerelease，导致它永远返回 404（这才是「检查更新
+ * 连接不到网络」的真正原因，跟网络无关）。
+ * 改成 `/releases?per_page=1` 取列表第一项（含 prerelease）。
+ */
+private const val UPDATE_API =
+    "https://api.github.com/repos/amelia4angela/orbit-easytier-android/releases?per_page=1"
 
 /** 「自动检查更新」偏好：与 MainActivity 的其他状态放同一个 SharedPreferences 文件。 */
 private const val UPDATE_PREFS = "easytier_state"
@@ -1795,18 +1800,7 @@ data class UpdateInfo(
 )
 
 /** Blocking GET of the latest release. Always call from Dispatchers.IO. */
-private fun fetchLatestRelease(): UpdateInfo {
-    var lastError: Exception? = null
-    for (api in UPDATE_API_MIRRORS) {
-        try {
-            return fetchLatestReleaseFrom(api)
-        } catch (e: Exception) {
-            lastError = e
-            AppLogger.w("Update", "endpoint failed: $api (${e.message})")
-        }
-    }
-    throw lastError ?: IllegalStateException("all update endpoints failed")
-}
+private fun fetchLatestRelease(): UpdateInfo = fetchLatestReleaseFrom(UPDATE_API)
 
 /** Single-endpoint fetch; throws on HTTP/parse failure so the caller can try the next mirror. */
 private fun fetchLatestReleaseFrom(apiUrl: String): UpdateInfo {
@@ -1820,7 +1814,10 @@ private fun fetchLatestReleaseFrom(apiUrl: String): UpdateInfo {
         val code = conn.responseCode
         if (code != HttpURLConnection.HTTP_OK) throw IllegalStateException("HTTP $code")
         val text = conn.inputStream.bufferedReader().use { it.readText() }
-        val root = JSONObject(text)
+        // /releases 返回数组：第一项就是最新版本（含 prerelease）。
+        val releases = org.json.JSONArray(text)
+        if (releases.length() == 0) throw IllegalStateException("no releases published")
+        val root = releases.getJSONObject(0)
         var apkUrl: String? = null
         val assets = root.optJSONArray("assets")
         if (assets != null) {
